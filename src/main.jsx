@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bell, Camera, Check, Compass, Home, ImagePlus, LogOut, MessageCircle, Plus, Search, Send, Settings, Sparkles, User, Users, Video, X, Zap } from "lucide-react";
+import { Bell, Camera, Compass, Home, MessageCircle, Plus, Search, Settings, Sparkles, User, Users, Video, X, Zap } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { getFeed, createPost, deletePost, likePost, unlikePost, addComment, isPostLikedByUser } from "./lib/posts";
 import { getMomentsForFeed, createMoment, recordMomentView } from "./lib/moments";
@@ -16,64 +16,171 @@ import { CommunitiesPanel } from "./components/CommunitiesPanel";
 import { NotificationsPanel } from "./components/NotificationsPanel";
 import { ProfilePanel } from "./components/ProfilePanel";
 import "./index.css";
-import "./convogram.css";
-import "./workspace.css";
 
-const navItems = [
-  { id: "home", label: "Home", icon: Home },
-  { id: "shorts", label: "Shorts", icon: Zap },
-  { id: "messages", label: "Messages", icon: MessageCircle },
-  { id: "communities", label: "Communities", icon: Users },
-  { id: "profile", label: "Profile", icon: User },
+const nav = [
+  ["home", "Home", Home],
+  ["discover", "Discover", Compass],
+  ["shorts", "Shorts", Zap],
+  ["messages", "Messages", MessageCircle],
+  ["communities", "Communities", Users],
+  ["profile", "Profile", User],
 ];
 
-function avatarLetter(profile, fallback = "C") { return (profile?.display_name || profile?.username || fallback).charAt(0).toUpperCase(); }
+function avatar(profile) {
+  return (profile?.display_name || profile?.username || "C").slice(0, 1).toUpperCase();
+}
 
 function App() {
-  const [session, setSession] = useState(null); const [profile, setProfile] = useState(null); const [loading, setLoading] = useState(true); const [authMode, setAuthMode] = useState("login"); const [activeTab, setActiveTab] = useState("home"); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [username, setUsername] = useState(""); const [displayName, setDisplayName] = useState(""); const [error, setError] = useState(""); const [message, setMessage] = useState(""); const [posts, setPosts] = useState([]); const [moments, setMoments] = useState([]); const [shorts, setShorts] = useState([]); const [feedLoading, setFeedLoading] = useState(false); const [momentLoading, setMomentLoading] = useState(false); const [composerOpen, setComposerOpen] = useState(false); const [composerType, setComposerType] = useState("post"); const [caption, setCaption] = useState(""); const [selectedFile, setSelectedFile] = useState(null); const [publishing, setPublishing] = useState(false); const [viewingMoment, setViewingMoment] = useState(null); const [likedPosts, setLikedPosts] = useState({}); const [searchOpen, setSearchOpen] = useState(false); const [searchTerm, setSearchTerm] = useState(""); const [notificationsOpen, setNotificationsOpen] = useState(false); const [unreadNotifications, setUnreadNotifications] = useState(0); const [profileStats, setProfileStats] = useState({ postsCount: 0, followersCount: 0, followingCount: 0 });
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [booting, setBooting] = useState(true);
+  const [authMode, setAuthMode] = useState("login");
+  const [active, setActive] = useState("home");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [posts, setPosts] = useState([]);
+  const [moments, setMoments] = useState([]);
+  const [shorts, setShorts] = useState([]);
+  const [liked, setLiked] = useState({});
+  const [loadingFeed, setLoadingFeed] = useState(false);
+  const [composer, setComposer] = useState(null);
+  const [caption, setCaption] = useState("");
+  const [file, setFile] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [notifications, setNotifications] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const [stats, setStats] = useState({ postsCount: 0, followersCount: 0, followingCount: 0 });
 
-  useEffect(() => { loadSession(); if (!supabase) return undefined; const { data } = supabase.auth.onAuthStateChange((_event, currentSession) => { setSession(currentSession); if (!currentSession) setProfile(null); }); return () => data.subscription.unsubscribe(); }, []);
-  useEffect(() => { if (session?.user?.id) refreshHome(session.user.id); }, [session?.user?.id]);
-  useEffect(() => { if (activeTab === "shorts" && session?.user?.id) loadShorts(); }, [activeTab, session?.user?.id]);
-  useEffect(() => { if (session?.user?.id) refreshAccountData(session.user.id); }, [session?.user?.id]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!supabase) { setError("Supabase is not configured."); setBooting(false); return; }
+      const { data } = await supabase.auth.getSession();
+      if (!alive) return;
+      setSession(data.session);
+      if (data.session) await loadProfile(data.session.user.id);
+      setBooting(false);
+    })();
+    const { data } = supabase.auth.onAuthStateChange(async (_event, next) => {
+      setSession(next);
+      if (next) await loadProfile(next.user.id); else setProfile(null);
+    });
+    return () => { alive = false; data.subscription.unsubscribe(); };
+  }, []);
 
-  async function refreshAccountData(userId) { try { const [stats, unread] = await Promise.all([getProfileStats(userId), getUnreadNotificationsCount(userId)]); setProfileStats(stats || { postsCount: 0, followersCount: 0, followingCount: 0 }); setUnreadNotifications(unread || 0); } catch (err) { setError(err.message || "Unable to refresh account data."); } }
-  async function loadSession() { if (!supabase) { setError("Convogram is not connected to Supabase yet."); setLoading(false); return; } const { data } = await supabase.auth.getSession(); setSession(data.session); if (data.session) await loadProfile(data.session.user.id); setLoading(false); }
-  async function loadProfile(userId) { const { data } = await supabase.from("profiles").select("*").eq("id", userId).single(); if (data) setProfile(data); }
-  async function refreshHome(userId) { setFeedLoading(true); setMomentLoading(true); try { const [feed, activeMoments] = await Promise.all([getFeed(30), getMomentsForFeed(userId, 30)]); setPosts(feed || []); setMoments(activeMoments || []); const likes = {}; await Promise.all((feed || []).map(async (post) => { likes[post.id] = await isPostLikedByUser(post.id, userId); })); setLikedPosts(likes); } catch (err) { setError(err.message || "Unable to load your feed."); } finally { setFeedLoading(false); setMomentLoading(false); } }
-  async function loadShorts() { try { setShorts((await getShortsForDiscover(20, 0)) || []); } catch (err) { setError(err.message || "Unable to load Shorts."); } }
-  async function handleAuth(e) { e.preventDefault(); setError(""); setMessage(""); if (!email || !password) return setError("Enter your email and password."); if (authMode === "signup" && (!username || !displayName)) return setError("Enter your name and choose a username."); if (authMode === "login") { const { data, error: loginError } = await supabase.auth.signInWithPassword({ email, password }); if (loginError) return setError(loginError.message); setSession(data.session); if (data.session) await loadProfile(data.session.user.id); return; } const { data, error: signupError } = await supabase.auth.signUp({ email, password, options: { data: { username: username.trim().toLowerCase(), display_name: displayName.trim() } } }); if (signupError) return setError(signupError.message); if (data.session) { setSession(data.session); await loadProfile(data.session.user.id); } else setMessage("Account created. Check your email to confirm your account."); }
-  async function logout() { await supabase.auth.signOut(); setSession(null); setProfile(null); setPosts([]); setMoments([]); setActiveTab("home"); }
-  function openComposer(type = "post") { setComposerType(type); setCaption(""); setSelectedFile(null); setComposerOpen(true); }
-  function closeComposer() { setComposerOpen(false); setCaption(""); setSelectedFile(null); }
-  async function publish() { if (!session?.user?.id || (!caption.trim() && !selectedFile)) return; setPublishing(true); setError(""); try { if (composerType === "post") { let mediaUrl = null; let mediaType = "text"; if (selectedFile) { const uploaded = await uploadPostMedia(selectedFile, session.user.id); mediaUrl = uploaded.url; mediaType = uploaded.mediaType; } const created = await createPost(session.user.id, caption.trim(), mediaUrl, mediaType); setPosts((prev) => [{ ...created, profiles: profile, likes: [{ count: 0 }], comments: [{ count: 0 }] }, ...prev]); } else { if (!selectedFile) throw new Error("Choose a photo or video for your Moment."); const uploaded = await uploadMomentMedia(selectedFile, session.user.id); const created = await createMoment(session.user.id, uploaded.url, uploaded.mediaType, caption.trim()); setMoments((prev) => [{ ...created, profiles: profile, moment_views: [{ count: 0 }] }, ...prev]); } closeComposer(); await refreshAccountData(session.user.id); } catch (err) { setError(err.message || "Publishing failed."); } finally { setPublishing(false); } }
-  async function handleLike(post) { await likePost(post.id, session.user.id); setLikedPosts((prev) => ({ ...prev, [post.id]: true })); setPosts((prev) => prev.map((item) => item.id === post.id ? { ...item, likes: [{ count: (item.likes?.[0]?.count || 0) + 1 }] } : item)); }
-  async function handleUnlike(post) { await unlikePost(post.id, session.user.id); setLikedPosts((prev) => ({ ...prev, [post.id]: false })); setPosts((prev) => prev.map((item) => item.id === post.id ? { ...item, likes: [{ count: Math.max(0, (item.likes?.[0]?.count || 0) - 1) }] } : item)); }
-  async function handleComment(post, content) { await addComment(post.id, session.user.id, content); setPosts((prev) => prev.map((item) => item.id === post.id ? { ...item, comments: [{ count: (item.comments?.[0]?.count || 0) + 1 }] } : item)); }
-  async function handleDelete(post) { await deletePost(post.id); setPosts((prev) => prev.filter((item) => item.id !== post.id)); await refreshAccountData(session.user.id); }
-  async function viewMoment(moment) { setViewingMoment(moment); if (moment.user_id !== session.user.id) await recordMomentView(moment.id, session.user.id); }
-  const filteredPosts = useMemo(() => { if (!searchTerm.trim()) return posts; const term = searchTerm.toLowerCase(); return posts.filter((post) => `${post.caption || ""} ${post.profiles?.display_name || ""} ${post.profiles?.username || ""}`.toLowerCase().includes(term)); }, [posts, searchTerm]);
+  useEffect(() => { if (session?.user?.id) refresh(); }, [session?.user?.id]);
+  useEffect(() => { if (active === "shorts" && session?.user?.id) loadShorts(); }, [active, session?.user?.id]);
 
-  if (loading) return <div className="loading-screen"><div className="loading-logo">C</div><h1>Convogram</h1><p>Preparing your world...</p></div>;
-  if (!session) return <div className="auth-page"><div className="auth-glow" /><div className="auth-card"><div className="brand"><div className="logo-mark">C</div><div><h1>Convogram</h1><span>Connect. Share. Communicate.</span></div></div><div className="auth-heading"><span className="eyebrow">THE SOCIAL SUPERAPP</span><h2>{authMode === "login" ? "Welcome back" : "Join Convogram"}</h2><p>{authMode === "login" ? "Your people, conversations and moments are waiting." : "One place for messages, Moments, Shorts and communities."}</p></div><form onSubmit={handleAuth}>{authMode === "signup" && <><label>Display name</label><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" /><label>Username</label><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username" /></>}<label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" /><label>Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" />{error && <div className="error-box">{error}</div>}{message && <div className="success-box">{message}</div>}<button className="primary-button" type="submit">{authMode === "login" ? "Log in" : "Create account"}</button></form><div className="auth-switch"><span>{authMode === "login" ? "New to Convogram?" : "Already here?"}</span><button onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}>{authMode === "login" ? "Create account" : "Log in"}</button></div></div></div>;
+  async function loadProfile(userId) {
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (data) setProfile(data);
+  }
 
-  return <div className="app-shell"><header className="topbar"><button className="topbar-brand" onClick={() => setActiveTab("home")}><div className="small-logo">C</div><strong>Convogram</strong></button><div className="topbar-actions"><button onClick={() => setSearchOpen((v) => !v)} aria-label="Search"><Search size={20} /></button><button onClick={() => setNotificationsOpen((v) => !v)} aria-label="Notifications" className="notification-trigger"><Bell size={20} />{unreadNotifications > 0 && <span className="notification-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}</button><button onClick={() => setActiveTab("profile")} aria-label="Profile"><div className="mini-avatar">{avatarLetter(profile)}</div></button></div></header>{notificationsOpen && <NotificationsPanel userId={session.user.id} onClose={() => { setNotificationsOpen(false); refreshAccountData(session.user.id); }} />}{searchOpen && <div className="search-bar"><Search size={18} /><input autoFocus value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search Convogram..." /><button onClick={() => { setSearchTerm(""); setSearchOpen(false); }}><X size={18} /></button></div>}<main className="main-content">{error && <div className="global-error">{error}<button onClick={() => setError("")}><X size={15} /></button></div>}
-  {activeTab === "home" && <><section className="hero-card"><div><span className="eyebrow">GOOD TO SEE YOU, {profile?.display_name?.split(" ")[0]?.toUpperCase() || "FRIEND"}</span><h1>Everything you love.<br /><span>One conversation.</span></h1><p>Share Moments, discover Shorts, message your people and build communities.</p><div className="hero-actions"><button onClick={() => openComposer("post")}><Plus size={17} /> Create post</button><button className="ghost" onClick={() => openComposer("moment")}><Camera size={17} /> Add Moment</button></div></div><div className="hero-orbit"><Sparkles size={34} /><div>Connect<br />more.</div></div></section><section className="section"><div className="section-header"><div><span className="eyebrow">24 HOURS</span><h2>Moments</h2></div><button onClick={() => openComposer("moment")}><Plus size={17} /> Add</button></div><MomentsRow moments={moments} currentUserId={session.user.id} onAddMoment={() => openComposer("moment")} onViewMoment={viewMoment} loading={momentLoading} error={null} /></section><section className="section"><div className="section-header"><div><span className="eyebrow">YOUR FEED</span><h2>For you</h2></div><button onClick={() => refreshHome(session.user.id)}><Compass size={16} /> Refresh</button></div>{feedLoading ? <div className="feed-loader">Loading your feed...</div> : filteredPosts.length ? filteredPosts.map((post) => <PostCard key={post.id} post={post} currentUserId={session.user.id} isLiked={!!likedPosts[post.id]} onLike={() => handleLike(post)} onUnlike={() => handleUnlike(post)} onComment={(content) => handleComment(post, content)} onDelete={() => handleDelete(post)} likeCount={post.likes?.[0]?.count || 0} commentCount={post.comments?.[0]?.count || 0} />) : <div className="empty-state"><Sparkles size={28} /><h2>Your feed is ready</h2><p>Be the first to share something with your Convogram community.</p><button className="primary-button small" onClick={() => openComposer("post")}>Create your first post</button></div>}</section></>}
-  {activeTab === "shorts" && <section className="page-section"><div className="page-title"><div><span className="eyebrow">DISCOVER</span><h1>Shorts</h1></div><button className="round-button" onClick={loadShorts}><Video size={20} /></button></div>{shorts.length ? <ShortsPanel shorts={shorts} userId={session.user.id} /> : <div className="empty-state"><Zap size={30} /><h2>Shorts are coming to life</h2><p>Short videos from creators will appear here.</p></div>}</section>}
-  {activeTab === "messages" && <section className="page-section"><MessagesPanel userId={session.user.id} /></section>}
-  {activeTab === "communities" && <section className="page-section"><CommunitiesPanel userId={session.user.id} /></section>}
-  {activeTab === "profile" && <ProfilePanel profile={profile} stats={profileStats} posts={posts} onCreatePost={() => openComposer("post")} onCreateMoment={() => openComposer("moment")} onMessage={() => setActiveTab("messages")} onEdit={() => setMessage("Profile settings surface connected.")} onLogout={logout} />}
-</main><nav className="bottom-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-button ${activeTab === id ? "active" : ""}`} onClick={() => setActiveTab(id)}><Icon size={21} /><small>{label}</small></button>)}</nav>
-{composerOpen && <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && closeComposer()}><div className="composer-modal"><div className="modal-head"><div><span className="eyebrow">CREATE</span><h2>{composerType === "post" ? "New post" : "New Moment"}</h2></div><button onClick={closeComposer}><X /></button></div><textarea value={caption} onChange={(e) => setCaption(e.target.value)} placeholder={composerType === "post" ? "What's on your mind?" : "Add a caption..."} /><label className="upload-box"><input type="file" accept="image/*,video/*" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />{selectedFile ? <><Check size={24} /><strong>{selectedFile.name}</strong><span>Ready to upload</span></> : <><ImagePlus size={28} /><strong>Add photo or video</strong><span>Up to 50MB</span></>}</label><button className="primary-button" disabled={publishing || (composerType === "post" && !caption.trim() && !selectedFile)} onClick={publish}>{publishing ? "Publishing..." : composerType === "post" ? "Publish post" : "Share Moment"}<Send size={16} /></button></div></div>}
-{viewingMoment && <div className="moment-viewer" onClick={() => setViewingMoment(null)}><button className="viewer-close" onClick={() => setViewingMoment(null)}><X /></button><div className="viewer-content" onClick={(e) => e.stopPropagation()}>{viewingMoment.media_type === "video" ? <video src={viewingMoment.media_url} controls autoPlay /> : <img src={viewingMoment.media_url} alt={viewingMoment.caption || "Moment"} />}<div className="viewer-caption"><strong>{viewingMoment.profiles?.display_name}</strong><span>{viewingMoment.caption}</span></div></div></div>}
-</div>;
+  async function refresh() {
+    if (!session?.user?.id) return;
+    setLoadingFeed(true); setError("");
+    try {
+      const [feed, activeMoments, profileStats, notificationCount] = await Promise.all([
+        getFeed(40), getMomentsForFeed(session.user.id, 30), getProfileStats(session.user.id), getUnreadNotificationsCount(session.user.id)
+      ]);
+      setPosts(feed || []); setMoments(activeMoments || []); setStats(profileStats || stats); setUnread(notificationCount || 0);
+      const map = {};
+      await Promise.all((feed || []).map(async p => { map[p.id] = await isPostLikedByUser(p.id, session.user.id); }));
+      setLiked(map);
+    } catch (e) { setError(e.message || "Could not load Convogram."); }
+    finally { setLoadingFeed(false); }
+  }
+
+  async function loadShorts() { try { setShorts((await getShortsForDiscover(30, 0)) || []); } catch (e) { setError(e.message || "Could not load Shorts."); } }
+
+  async function authenticate(e) {
+    e.preventDefault(); setError(""); setNotice("");
+    if (!email || !password) return setError("Enter your email and password.");
+    if (authMode === "login") {
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (err) setError(err.message);
+      return;
+    }
+    if (!username.trim() || !displayName.trim()) return setError("Enter your name and username.");
+    const { data, error: err } = await supabase.auth.signUp({ email, password, options: { data: { username: username.trim().toLowerCase(), display_name: displayName.trim() } } });
+    if (err) return setError(err.message);
+    if (!data.session) setNotice("Account created. Check your email to confirm your account.");
+  }
+
+  async function logout() { await supabase.auth.signOut(); setActive("home"); setPosts([]); setMoments([]); }
+
+  function openComposer(type) { setComposer(type); setCaption(""); setFile(null); }
+  function closeComposer() { setComposer(null); setCaption(""); setFile(null); }
+
+  async function publish() {
+    if (!session?.user?.id || (!caption.trim() && !file)) return;
+    setPublishing(true); setError("");
+    try {
+      if (composer === "post") {
+        let mediaUrl = null; let mediaType = "text";
+        if (file) { const upload = await uploadPostMedia(file, session.user.id); mediaUrl = upload.url; mediaType = upload.mediaType; }
+        const created = await createPost(session.user.id, caption.trim(), mediaUrl, mediaType);
+        setPosts(p => [{ ...created, profiles: profile, likes: [{ count: 0 }], comments: [{ count: 0 }] }, ...p]);
+      } else {
+        if (!file) throw new Error("Choose a photo or video for a Moment.");
+        const upload = await uploadMomentMedia(file, session.user.id);
+        const created = await createMoment(session.user.id, upload.url, upload.mediaType, caption.trim());
+        setMoments(p => [{ ...created, profiles: profile, moment_views: [{ count: 0 }] }, ...p]);
+      }
+      closeComposer();
+      const next = await getProfileStats(session.user.id); if (next) setStats(next);
+    } catch (e) { setError(e.message || "Publishing failed."); }
+    finally { setPublishing(false); }
+  }
+
+  async function toggleLike(post) {
+    try {
+      if (liked[post.id]) { await unlikePost(post.id, session.user.id); setLiked(x => ({ ...x, [post.id]: false })); }
+      else { await likePost(post.id, session.user.id); setLiked(x => ({ ...x, [post.id]: true })); }
+      setPosts(items => items.map(p => p.id === post.id ? { ...p, likes: [{ count: Math.max(0, (p.likes?.[0]?.count || 0) + (liked[post.id] ? -1 : 1)) }] } : p));
+    } catch (e) { setError(e.message || "Could not update like."); }
+  }
+
+  async function comment(post, text) { await addComment(post.id, session.user.id, text); setPosts(items => items.map(p => p.id === post.id ? { ...p, comments: [{ count: (p.comments?.[0]?.count || 0) + 1 }] } : p)); }
+  async function removePost(post) { await deletePost(post.id); setPosts(items => items.filter(p => p.id !== post.id)); }
+  async function viewMoment(moment) { if (moment.user_id !== session.user.id) await recordMomentView(moment.id, session.user.id); }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase(); if (!q) return posts;
+    return posts.filter(p => `${p.caption || ""} ${p.profiles?.display_name || ""} ${p.profiles?.username || ""}`.toLowerCase().includes(q));
+  }, [posts, search]);
+
+  if (booting) return <div className="boot"><div className="brand-mark">C</div><h1>Convogram</h1><p>Loading your social world…</p></div>;
+
+  if (!session) return <div className="auth"><div className="auth-card"><div className="brand-row"><div className="brand-mark">C</div><div><b>Convogram</b><span>Everything social, together.</span></div></div><div className="auth-copy"><small>THE SOCIAL SUPERAPP</small><h1>{authMode === "login" ? "Welcome back." : "Create your Convogram."}</h1><p>Post, chat, call, discover Shorts, follow people and build communities from one account.</p></div><form onSubmit={authenticate}>{authMode === "signup" && <><label>Display name<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" /></label><label>Username<input value={username} onChange={e => setUsername(e.target.value)} placeholder="username" /></label></>}<label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" /></label>{error && <div className="alert error">{error}</div>}{notice && <div className="alert">{notice}</div>}<button className="primary" type="submit">{authMode === "login" ? "Log in" : "Create account"}</button></form><button className="switch" onClick={() => setAuthMode(m => m === "login" ? "signup" : "login")}>{authMode === "login" ? "New to Convogram? Create an account" : "Already have an account? Log in"}</button></div></div>;
+
+  return <div className="app">
+    <header className="topbar"><button className="brand-button" onClick={() => setActive("home")}><span className="brand-mark small">C</span><b>Convogram</b></button><div className="top-search">{searchOpen && <><Search size={17}/><input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people, posts and communities"/><button onClick={() => { setSearch(""); setSearchOpen(false); }}><X size={17}/></button></>}</div><div className="top-actions"><button onClick={() => setSearchOpen(v => !v)}><Search size={20}/></button><button className="notification" onClick={() => setNotifications(v => !v)}><Bell size={20}/>{unread > 0 && <i>{unread > 9 ? "9+" : unread}</i>}</button><button onClick={() => setActive("profile")}><span className="avatar mini">{avatar(profile)}</span></button></div></header>
+    {notifications && <NotificationsPanel userId={session.user.id} onClose={() => { setNotifications(false); refresh(); }} />}
+    <main className="layout"><aside className="sidebar"><div className="side-profile"><span className="avatar">{avatar(profile)}</span><div><b>{profile?.display_name || "You"}</b><small>@{profile?.username || "user"}</small></div></div>{nav.map(([id, label, Icon]) => <button key={id} className={active === id ? "active" : ""} onClick={() => setActive(id)}><Icon size={20}/><span>{label}</span>{id === "messages" && <em>Chat</em>}</button>)}<div className="sidebar-divider"/><button onClick={() => openComposer("post")}><Plus size={20}/><span>Create</span></button><button onClick={() => setActive("profile")}><Settings size={20}/><span>Settings</span></button><button className="logout" onClick={logout}><span>↪</span><span>Log out</span></button></aside>
+      <section className="content">
+        {error && <div className="global-alert">{error}<button onClick={() => setError("")}><X size={15}/></button></div>}
+        {active === "home" && <>
+          <section className="welcome"><div><small>YOUR SOCIAL WORLD</small><h1>Everything you love.<br/><span>One conversation.</span></h1><p>Share moments, watch Shorts, message friends and grow communities without jumping between apps.</p><div className="welcome-actions"><button className="primary" onClick={() => openComposer("post")}><Plus size={17}/> Create post</button><button onClick={() => openComposer("moment")}><Camera size={17}/> Add Moment</button></div></div><div className="feature-orb"><Sparkles size={34}/><b>Connect<br/>more.</b></div></section>
+          <section className="panel"><div className="section-head"><div><small>24 HOURS</small><h2>Moments</h2></div><button onClick={() => openComposer("moment")}><Plus size={16}/> Add</button></div><MomentsRow moments={moments} currentUserId={session.user.id} onAddMoment={() => openComposer("moment")} onViewMoment={viewMoment} loading={false} error={null}/></section>
+          <section className="panel"><div className="section-head"><div><small>YOUR FEED</small><h2>For you</h2></div><button onClick={refresh}><Compass size={16}/> Refresh</button></div>{loadingFeed ? <div className="empty">Loading your feed…</div> : filtered.length ? filtered.map(post => <PostCard key={post.id} post={post} currentUserId={session.user.id} isLiked={!!liked[post.id]} onLike={() => toggleLike(post)} onUnlike={() => toggleLike(post)} onComment={text => comment(post, text)} onDelete={() => removePost(post)} likeCount={post.likes?.[0]?.count || 0} commentCount={post.comments?.[0]?.count || 0}/>) : <div className="empty"><Sparkles size={28}/><h3>Your feed starts here.</h3><p>Share the first thing your people will see.</p><button className="primary" onClick={() => openComposer("post")}>Create your first post</button></div>}</section>
+        </>}
+        {active === "discover" && <section className="page"><div className="page-head"><div><small>EXPLORE</small><h1>Discover</h1><p>Find people, conversations, communities and content.</p></div><button className="primary" onClick={() => setSearchOpen(true)}><Search size={17}/> Search</button></div><div className="discover-grid"><div><h3>Short-form video</h3><p>Jump into Shorts and discover creators.</p><button onClick={() => setActive("shorts")}>Open Shorts <Video size={16}/></button></div><div><h3>Communities</h3><p>Join spaces built around shared interests.</p><button onClick={() => setActive("communities")}>Explore communities <Users size={16}/></button></div><div><h3>Messages & calls</h3><p>Private chats, groups, voice and video experiences.</p><button onClick={() => setActive("messages")}>Open messages <MessageCircle size={16}/></button></div></div></section>}
+        {active === "shorts" && <section className="page"><div className="page-head"><div><small>DISCOVER</small><h1>Shorts</h1><p>Short videos, sounds and creators.</p></div><button onClick={loadShorts}><Zap size={18}/> Refresh</button></div>{shorts.length ? <ShortsPanel shorts={shorts} userId={session.user.id}/> : <div className="empty"><Zap size={30}/><h3>No Shorts yet</h3><p>Short videos will appear here as creators publish them.</p></div>}</section>}
+        {active === "messages" && <section className="page"><MessagesPanel userId={session.user.id}/></section>}
+        {active === "communities" && <section className="page"><CommunitiesPanel userId={session.user.id}/></section>}
+        {active === "profile" && <ProfilePanel profile={profile} stats={stats} posts={posts} onCreatePost={() => openComposer("post")} onCreateMoment={() => openComposer("moment")} onMessage={() => setActive("messages")} onEdit={() => setNotice("Profile settings are ready for your account.")} />}
+      </section>
+    </main>
+    <nav className="mobile-nav">{nav.slice(0, 5).map(([id, label, Icon]) => <button key={id} className={active === id ? "active" : ""} onClick={() => setActive(id)}><Icon size={21}/><span>{label}</span></button>)}</nav>
+    {composer && <div className="modal-backdrop" onClick={closeComposer}><div className="composer" onClick={e => e.stopPropagation()}><div className="composer-head"><div><small>{composer === "post" ? "CREATE" : "24 HOURS"}</small><h2>{composer === "post" ? "New post" : "New Moment"}</h2></div><button onClick={closeComposer}><X/></button></div><textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder={composer === "post" ? "What's happening?" : "Add a caption…"}/><label className="file-picker"><Camera size={18}/><span>{file ? file.name : "Add photo or video"}</span><input type="file" accept="image/*,video/*" onChange={e => setFile(e.target.files?.[0] || null)}/></label><button className="primary publish" disabled={publishing || (!caption.trim() && !file)} onClick={publish}>{publishing ? "Publishing…" : "Publish"}</button></div></div>}
+  </div>;
 }
 
-export default App;
-
-const rootElement = document.getElementById("root");
-if (!rootElement) {
-  throw new Error("Convogram could not find the #root element.");
-}
-
-createRoot(rootElement).render(<App />);
+createRoot(document.getElementById("root")).render(<App />);
