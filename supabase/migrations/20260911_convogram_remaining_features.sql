@@ -1,4 +1,5 @@
--- Remaining platform foundations: message expiry, creator earnings, notification devices, livestreams.
+-- Remaining free platform foundations: message expiry, reports, notification devices, livestreams.
+-- Convogram has no payments, subscriptions, creator earnings, or monetization.
 -- Safe to rerun.
 
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
@@ -8,21 +9,6 @@ ALTER TABLE reports ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS resolution_notes TEXT;
 CREATE INDEX IF NOT EXISTS idx_reports_status_created_at ON reports(status, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS creator_earnings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  source VARCHAR(50) NOT NULL DEFAULT 'tip',
-  amount_cents BIGINT NOT NULL DEFAULT 0,
-  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
-  status VARCHAR(30) NOT NULL DEFAULT 'pending',
-  reference TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT creator_earnings_source_check CHECK (source IN ('tip','subscription','content','livestream','other')),
-  CONSTRAINT creator_earnings_status_check CHECK (status IN ('pending','available','paid','cancelled')),
-  CONSTRAINT creator_earnings_amount_check CHECK (amount_cents >= 0)
-);
-CREATE INDEX IF NOT EXISTS idx_creator_earnings_user_created ON creator_earnings(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS notification_devices (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -62,13 +48,10 @@ CREATE TABLE IF NOT EXISTS livestream_viewers (
 );
 CREATE INDEX IF NOT EXISTS idx_livestream_viewers_stream ON livestream_viewers(livestream_id);
 
-ALTER TABLE creator_earnings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_devices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE livestreams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE livestream_viewers ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS creator_earnings_select_own ON creator_earnings;
-CREATE POLICY creator_earnings_select_own ON creator_earnings FOR SELECT USING (user_id = auth.uid());
 DROP POLICY IF EXISTS notification_devices_manage_own ON notification_devices;
 CREATE POLICY notification_devices_manage_own ON notification_devices FOR ALL USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 DROP POLICY IF EXISTS livestreams_public_read ON livestreams;
@@ -79,4 +62,5 @@ DROP POLICY IF EXISTS livestream_viewers_read ON livestream_viewers;
 CREATE POLICY livestream_viewers_read ON livestream_viewers FOR SELECT USING (EXISTS (SELECT 1 FROM livestreams l WHERE l.id = livestream_id AND (l.host_id = auth.uid() OR user_id = auth.uid())));
 DROP POLICY IF EXISTS livestream_viewers_manage_own ON livestream_viewers;
 CREATE POLICY livestream_viewers_manage_own ON livestream_viewers FOR INSERT WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS livestream_viewers_update_own ON livestream_viewers;
 CREATE POLICY livestream_viewers_update_own ON livestream_viewers FOR UPDATE USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
