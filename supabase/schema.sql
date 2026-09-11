@@ -48,29 +48,6 @@ CREATE INDEX idx_posts_created_at ON posts(created_at DESC);
 CREATE INDEX idx_posts_user_created ON posts(user_id, created_at DESC);
 
 -- ============================================================================
--- MOMENTS TABLE (24-hour photo/video updates)
--- ============================================================================
-CREATE TABLE moments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  media_url TEXT NOT NULL,
-  media_type VARCHAR(50) NOT NULL,
-  caption TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  
-  CONSTRAINT media_type_check CHECK (media_type IN ('image', 'video'))
-);
-
-CREATE INDEX idx_moments_user_id ON moments(user_id);
-CREATE INDEX idx_moments_expires_at ON moments(expires_at);
-CREATE INDEX idx_moments_user_expires ON moments(user_id, expires_at DESC);
-CREATE INDEX idx_moments_created_at ON moments(created_at DESC);
-
--- Automatically clean up expired moments (can be run periodically)
--- DELETE FROM moments WHERE expires_at < NOW();
-
--- ============================================================================
 -- LIKES TABLE
 -- ============================================================================
 CREATE TABLE likes (
@@ -121,6 +98,42 @@ CREATE TABLE follows (
 CREATE INDEX idx_follows_follower_id ON follows(follower_id);
 CREATE INDEX idx_follows_following_id ON follows(following_id);
 CREATE INDEX idx_follows_created_at ON follows(created_at DESC);
+
+-- ============================================================================
+-- MOMENTS TABLE (24-hour photo/video updates)
+-- ============================================================================
+CREATE TABLE moments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  media_url TEXT NOT NULL,
+  media_type VARCHAR(50) NOT NULL,
+  caption TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  
+  CONSTRAINT media_type_check CHECK (media_type IN ('image', 'video'))
+);
+
+CREATE INDEX idx_moments_user_id ON moments(user_id);
+CREATE INDEX idx_moments_expires_at ON moments(expires_at);
+CREATE INDEX idx_moments_user_expires ON moments(user_id, expires_at DESC);
+CREATE INDEX idx_moments_created_at ON moments(created_at DESC);
+
+-- ============================================================================
+-- MOMENT_VIEWS TABLE (Track Moment views)
+-- ============================================================================
+CREATE TABLE moment_views (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  moment_id UUID NOT NULL REFERENCES moments(id) ON DELETE CASCADE,
+  viewer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  viewed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT unique_moment_view UNIQUE(moment_id, viewer_id)
+);
+
+CREATE INDEX idx_moment_views_moment_id ON moment_views(moment_id);
+CREATE INDEX idx_moment_views_viewer_id ON moment_views(viewer_id);
+CREATE INDEX idx_moment_views_viewed_at ON moment_views(viewed_at DESC);
 
 -- ============================================================================
 -- CONVERSATIONS TABLE (Direct and Group messaging)
@@ -188,6 +201,147 @@ CREATE INDEX idx_messages_conversation_created ON messages(conversation_id, crea
 CREATE INDEX idx_messages_reply_to_id ON messages(reply_to_id);
 
 -- ============================================================================
+-- MESSAGE_REACTIONS TABLE (Track message reactions)
+-- ============================================================================
+CREATE TABLE message_reactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  reaction VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT unique_reaction UNIQUE(message_id, user_id, reaction)
+);
+
+CREATE INDEX idx_message_reactions_message_id ON message_reactions(message_id);
+CREATE INDEX idx_message_reactions_user_id ON message_reactions(user_id);
+
+-- ============================================================================
+-- READ_RECEIPTS TABLE (Track message read status)
+-- ============================================================================
+CREATE TABLE read_receipts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  read_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT unique_read_receipt UNIQUE(message_id, user_id)
+);
+
+CREATE INDEX idx_read_receipts_message_id ON read_receipts(message_id);
+CREATE INDEX idx_read_receipts_user_id ON read_receipts(user_id);
+
+-- ============================================================================
+-- PRESENCE TABLE (Track user online/typing status)
+-- ============================================================================
+CREATE TABLE presence (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+  status VARCHAR(50) DEFAULT 'online',
+  typing BOOLEAN DEFAULT FALSE,
+  last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT unique_presence UNIQUE(user_id, conversation_id),
+  CONSTRAINT status_check CHECK (status IN ('online', 'offline', 'away'))
+);
+
+CREATE INDEX idx_presence_user_id ON presence(user_id);
+CREATE INDEX idx_presence_conversation_id ON presence(conversation_id);
+CREATE INDEX idx_presence_last_seen ON presence(last_seen DESC);
+
+-- ============================================================================
+-- SHORTS TABLE (Vertical short-form video content)
+-- ============================================================================
+CREATE TABLE shorts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  video_url TEXT NOT NULL,
+  thumbnail_url TEXT,
+  caption TEXT,
+  duration_seconds FLOAT,
+  sound_id UUID,
+  sound_name VARCHAR(255),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_shorts_user_id ON shorts(user_id);
+CREATE INDEX idx_shorts_created_at ON shorts(created_at DESC);
+CREATE INDEX idx_shorts_sound_id ON shorts(sound_id);
+
+-- ============================================================================
+-- SHORT_LIKES TABLE
+-- ============================================================================
+CREATE TABLE short_likes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  short_id UUID NOT NULL REFERENCES shorts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT unique_short_like UNIQUE(short_id, user_id)
+);
+
+CREATE INDEX idx_short_likes_short_id ON short_likes(short_id);
+CREATE INDEX idx_short_likes_user_id ON short_likes(user_id);
+
+-- ============================================================================
+-- SHORT_COMMENTS TABLE
+-- ============================================================================
+CREATE TABLE short_comments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  short_id UUID NOT NULL REFERENCES shorts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT content_not_empty CHECK (LENGTH(TRIM(content)) > 0)
+);
+
+CREATE INDEX idx_short_comments_short_id ON short_comments(short_id);
+CREATE INDEX idx_short_comments_user_id ON short_comments(user_id);
+CREATE INDEX idx_short_comments_created_at ON short_comments(created_at DESC);
+
+-- ============================================================================
+-- CALL_SESSIONS TABLE (Voice/video call foundation)
+-- ============================================================================
+CREATE TABLE call_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  initiator_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  call_type VARCHAR(50) NOT NULL,
+  status VARCHAR(50) DEFAULT 'initiated',
+  started_at TIMESTAMP WITH TIME ZONE,
+  ended_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT call_type_check CHECK (call_type IN ('voice', 'video')),
+  CONSTRAINT status_check CHECK (status IN ('initiated', 'ringing', 'connected', 'ended', 'missed', 'declined'))
+);
+
+CREATE INDEX idx_call_sessions_initiator_id ON call_sessions(initiator_id);
+CREATE INDEX idx_call_sessions_status ON call_sessions(status);
+CREATE INDEX idx_call_sessions_created_at ON call_sessions(created_at DESC);
+
+-- ============================================================================
+-- CALL_PARTICIPANTS TABLE (For group calls)
+-- ============================================================================
+CREATE TABLE call_participants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  call_session_id UUID NOT NULL REFERENCES call_sessions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  joined_at TIMESTAMP WITH TIME ZONE,
+  left_at TIMESTAMP WITH TIME ZONE,
+  duration_seconds INT,
+  
+  CONSTRAINT unique_call_participant UNIQUE(call_session_id, user_id)
+);
+
+CREATE INDEX idx_call_participants_call_session_id ON call_participants(call_session_id);
+CREATE INDEX idx_call_participants_user_id ON call_participants(user_id);
+
+-- ============================================================================
 -- COMMUNITIES TABLE
 -- ============================================================================
 CREATE TABLE communities (
@@ -225,6 +379,26 @@ CREATE INDEX idx_community_members_user_id ON community_members(user_id);
 CREATE INDEX idx_community_members_role ON community_members(role);
 
 -- ============================================================================
+-- COMMUNITY_POSTS TABLE (Posts within communities)
+-- ============================================================================
+CREATE TABLE community_posts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  content TEXT,
+  media_url TEXT,
+  media_type VARCHAR(50),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT media_type_check CHECK (media_type IS NULL OR media_type IN ('image', 'video', 'file'))
+);
+
+CREATE INDEX idx_community_posts_community_id ON community_posts(community_id);
+CREATE INDEX idx_community_posts_user_id ON community_posts(user_id);
+CREATE INDEX idx_community_posts_created_at ON community_posts(created_at DESC);
+
+-- ============================================================================
 -- NOTIFICATIONS TABLE
 -- ============================================================================
 CREATE TABLE notifications (
@@ -233,11 +407,11 @@ CREATE TABLE notifications (
   actor_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   type VARCHAR(50) NOT NULL,
   post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
-  message TEXT,
+  message_id UUID REFERENCES messages(id) ON DELETE CASCADE,
   is_read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   
-  CONSTRAINT notification_type_check CHECK (type IN ('like', 'comment', 'follow', 'mention', 'message', 'moment_view'))
+  CONSTRAINT notification_type_check CHECK (type IN ('like', 'comment', 'follow', 'mention', 'message', 'moment_view', 'call', 'community_invite'))
 );
 
 CREATE INDEX idx_notifications_user_id ON notifications(user_id);
@@ -245,6 +419,63 @@ CREATE INDEX idx_notifications_actor_id ON notifications(actor_id);
 CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
 CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
 CREATE INDEX idx_notifications_is_read ON notifications(is_read);
+
+-- ============================================================================
+-- REPORTS TABLE (Moderation and content reports)
+-- ============================================================================
+CREATE TABLE reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  reporter_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  reported_user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
+  reason VARCHAR(100) NOT NULL,
+  description TEXT,
+  status VARCHAR(50) DEFAULT 'open',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT reason_check CHECK (reason IN ('spam', 'harassment', 'hate_speech', 'violence', 'sexual', 'misleading', 'copyright', 'other')),
+  CONSTRAINT status_check CHECK (status IN ('open', 'investigating', 'resolved', 'dismissed'))
+);
+
+CREATE INDEX idx_reports_reporter_id ON reports(reporter_id);
+CREATE INDEX idx_reports_reported_user_id ON reports(reported_user_id);
+CREATE INDEX idx_reports_post_id ON reports(post_id);
+CREATE INDEX idx_reports_status ON reports(status);
+
+-- ============================================================================
+-- BLOCKS TABLE (User blocking)
+-- ============================================================================
+CREATE TABLE blocks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  blocker_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  blocked_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT unique_block UNIQUE(blocker_id, blocked_id),
+  CONSTRAINT no_self_block CHECK (blocker_id != blocked_id)
+);
+
+CREATE INDEX idx_blocks_blocker_id ON blocks(blocker_id);
+CREATE INDEX idx_blocks_blocked_id ON blocks(blocked_id);
+
+-- ============================================================================
+-- MEDIA_ASSETS TABLE (Track all media uploads)
+-- ============================================================================
+CREATE TABLE media_assets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  media_type VARCHAR(50) NOT NULL,
+  file_size INT,
+  storage_path TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT media_type_check CHECK (media_type IN ('image', 'video', 'audio', 'file'))
+);
+
+CREATE INDEX idx_media_assets_user_id ON media_assets(user_id);
+CREATE INDEX idx_media_assets_created_at ON media_assets(created_at DESC);
 
 -- ============================================================================
 -- TRIGGER FUNCTIONS
@@ -292,6 +523,18 @@ CREATE TRIGGER update_communities_updated_at
 -- Trigger for profiles.updated_at
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for shorts.updated_at
+CREATE TRIGGER update_shorts_updated_at
+  BEFORE UPDATE ON shorts
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for community_posts.updated_at
+CREATE TRIGGER update_community_posts_updated_at
+  BEFORE UPDATE ON community_posts
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
@@ -367,15 +610,28 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE moments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE moment_views ENABLE ROW LEVEL SECURITY;
 ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE follows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversation_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE message_reactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE read_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE presence ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shorts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE short_likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE short_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE call_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE call_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE communities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE community_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE community_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blocks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE media_assets ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- PROFILES POLICIES
@@ -470,6 +726,27 @@ CREATE POLICY "Users can create own moments"
 CREATE POLICY "Users can delete own moments"
   ON moments FOR DELETE
   USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- MOMENT_VIEWS POLICIES
+-- ============================================================================
+
+-- Users can view moment views they own
+CREATE POLICY "View moment views"
+  ON moment_views FOR SELECT
+  USING (
+    viewer_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM moments
+      WHERE moments.id = moment_views.moment_id
+      AND moments.user_id = auth.uid()
+    )
+  );
+
+-- Users can record their own views
+CREATE POLICY "Record moment view"
+  ON moment_views FOR INSERT
+  WITH CHECK (viewer_id = auth.uid());
 
 -- ============================================================================
 -- LIKES POLICIES
@@ -688,6 +965,219 @@ CREATE POLICY "Delete own messages"
   USING (auth.uid() = sender_id);
 
 -- ============================================================================
+-- MESSAGE_REACTIONS POLICIES
+-- ============================================================================
+
+-- Users can view reactions on messages they can see
+CREATE POLICY "View message reactions"
+  ON message_reactions FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM messages
+      WHERE messages.id = message_reactions.message_id
+      AND is_conversation_member(messages.conversation_id, auth.uid())
+    )
+  );
+
+-- Users can add reactions to messages they can see
+CREATE POLICY "Add message reactions"
+  ON message_reactions FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM messages
+      WHERE messages.id = message_reactions.message_id
+      AND is_conversation_member(messages.conversation_id, auth.uid())
+    )
+  );
+
+-- Users can remove their own reactions
+CREATE POLICY "Remove own reactions"
+  ON message_reactions FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- READ_RECEIPTS POLICIES
+-- ============================================================================
+
+-- Users can view read receipts for messages they sent or received
+CREATE POLICY "View read receipts"
+  ON read_receipts FOR SELECT
+  USING (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM messages
+      WHERE messages.id = read_receipts.message_id
+      AND messages.sender_id = auth.uid()
+    )
+  );
+
+-- Users can mark their own reads
+CREATE POLICY "Mark message as read"
+  ON read_receipts FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM messages
+      WHERE messages.id = read_receipts.message_id
+      AND is_conversation_member(messages.conversation_id, auth.uid())
+    )
+  );
+
+-- ============================================================================
+-- PRESENCE POLICIES
+-- ============================================================================
+
+-- Users can view presence in conversations they're in
+CREATE POLICY "View presence"
+  ON presence FOR SELECT
+  USING (
+    user_id = auth.uid()
+    OR (
+      conversation_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM conversation_members
+        WHERE conversation_members.conversation_id = presence.conversation_id
+        AND conversation_members.user_id = auth.uid()
+      )
+    )
+  );
+
+-- Users can update their own presence
+CREATE POLICY "Update own presence"
+  ON presence FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Update own presence state"
+  ON presence FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- ============================================================================
+-- SHORTS POLICIES
+-- ============================================================================
+
+-- Anyone can view public shorts
+CREATE POLICY "View shorts"
+  ON shorts FOR SELECT
+  USING (TRUE);
+
+-- Users can create their own shorts
+CREATE POLICY "Users can create own shorts"
+  ON shorts FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Users can update their own shorts
+CREATE POLICY "Users can update own shorts"
+  ON shorts FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Users can delete their own shorts
+CREATE POLICY "Users can delete own shorts"
+  ON shorts FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- SHORT_LIKES POLICIES
+-- ============================================================================
+
+-- Anyone can view short likes
+CREATE POLICY "View short likes"
+  ON short_likes FOR SELECT
+  USING (TRUE);
+
+-- Users can like shorts
+CREATE POLICY "Users can like shorts"
+  ON short_likes FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Users can remove their own likes
+CREATE POLICY "Users can remove short likes"
+  ON short_likes FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- SHORT_COMMENTS POLICIES
+-- ============================================================================
+
+-- Anyone can view short comments
+CREATE POLICY "View short comments"
+  ON short_comments FOR SELECT
+  USING (TRUE);
+
+-- Users can comment on shorts
+CREATE POLICY "Users can comment on shorts"
+  ON short_comments FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Users can update their own comments
+CREATE POLICY "Users can update own short comments"
+  ON short_comments FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Users can delete their own comments
+CREATE POLICY "Users can delete own short comments"
+  ON short_comments FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- CALL_SESSIONS POLICIES
+-- ============================================================================
+
+-- Users can view their own call sessions
+CREATE POLICY "View own call sessions"
+  ON call_sessions FOR SELECT
+  USING (
+    initiator_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM call_participants
+      WHERE call_participants.call_session_id = call_sessions.id
+      AND call_participants.user_id = auth.uid()
+    )
+  );
+
+-- Users can create call sessions
+CREATE POLICY "Users can create call sessions"
+  ON call_sessions FOR INSERT
+  WITH CHECK (auth.uid() = initiator_id);
+
+-- Users can update their own call sessions
+CREATE POLICY "Users can update own call sessions"
+  ON call_sessions FOR UPDATE
+  USING (initiator_id = auth.uid())
+  WITH CHECK (initiator_id = auth.uid());
+
+-- ============================================================================
+-- CALL_PARTICIPANTS POLICIES
+-- ============================================================================
+
+-- Users can view call participants for calls they're in
+CREATE POLICY "View call participants"
+  ON call_participants FOR SELECT
+  USING (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM call_sessions
+      WHERE call_sessions.id = call_participants.call_session_id
+      AND (
+        call_sessions.initiator_id = auth.uid()
+        OR EXISTS (
+          SELECT 1 FROM call_participants
+          WHERE call_participants.call_session_id = call_sessions.id
+          AND call_participants.user_id = auth.uid()
+        )
+      )
+    )
+  );
+
+-- Users can join calls
+CREATE POLICY "Join call"
+  ON call_participants FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+-- ============================================================================
 -- COMMUNITIES POLICIES
 -- ============================================================================
 
@@ -757,6 +1247,41 @@ CREATE POLICY "Admins can remove community members"
   );
 
 -- ============================================================================
+-- COMMUNITY_POSTS POLICIES
+-- ============================================================================
+
+-- Anyone can view community posts
+CREATE POLICY "View community posts"
+  ON community_posts FOR SELECT
+  USING (TRUE);
+
+-- Community members can create posts
+CREATE POLICY "Create community posts"
+  ON community_posts FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM community_members
+      WHERE community_members.community_id = community_posts.community_id
+      AND community_members.user_id = auth.uid()
+    )
+  );
+
+-- Users can update their own community posts
+CREATE POLICY "Update own community posts"
+  ON community_posts FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Users can delete their own community posts, admins can delete any
+CREATE POLICY "Delete community posts"
+  ON community_posts FOR DELETE
+  USING (
+    auth.uid() = user_id
+    OR is_community_admin(community_id, auth.uid())
+  );
+
+-- ============================================================================
 -- NOTIFICATIONS POLICIES
 -- ============================================================================
 
@@ -765,9 +1290,7 @@ CREATE POLICY "View own notifications"
   ON notifications FOR SELECT
   USING (auth.uid() = user_id);
 
--- System can insert notifications (disabled by default for direct insert)
--- Notifications should be created via application logic or database functions
--- Enabling this requires trusted application control only
+-- System can insert notifications
 CREATE POLICY "System can create notifications"
   ON notifications FOR INSERT
   WITH CHECK (FALSE);
@@ -781,6 +1304,58 @@ CREATE POLICY "Update own notifications"
 -- Users can delete their own notifications
 CREATE POLICY "Delete own notifications"
   ON notifications FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- REPORTS POLICIES
+-- ============================================================================
+
+-- Users can view their own reports
+CREATE POLICY "View own reports"
+  ON reports FOR SELECT
+  USING (reporter_id = auth.uid());
+
+-- Users can create reports
+CREATE POLICY "Users can create reports"
+  ON reports FOR INSERT
+  WITH CHECK (auth.uid() = reporter_id);
+
+-- ============================================================================
+-- BLOCKS POLICIES
+-- ============================================================================
+
+-- Users can view their own blocks
+CREATE POLICY "View own blocks"
+  ON blocks FOR SELECT
+  USING (blocker_id = auth.uid());
+
+-- Users can block others
+CREATE POLICY "Users can block others"
+  ON blocks FOR INSERT
+  WITH CHECK (auth.uid() = blocker_id);
+
+-- Users can unblock
+CREATE POLICY "Users can unblock"
+  ON blocks FOR DELETE
+  USING (auth.uid() = blocker_id);
+
+-- ============================================================================
+-- MEDIA_ASSETS POLICIES
+-- ============================================================================
+
+-- Users can view their own media assets
+CREATE POLICY "View own media assets"
+  ON media_assets FOR SELECT
+  USING (user_id = auth.uid());
+
+-- Users can upload media
+CREATE POLICY "Users can upload media"
+  ON media_assets FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Users can delete their own media
+CREATE POLICY "Users can delete own media"
+  ON media_assets FOR DELETE
   USING (auth.uid() = user_id);
 
 -- ============================================================================
