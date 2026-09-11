@@ -1,3 +1,4 @@
+@import "./premium-ui.css";
 .app-shell{background:linear-gradient(180deg,#f8faff 0,#f6f8fc 45%,#f8fafc 100%)}
 .topbar{box-shadow:0 4px 24px rgba(15,23,42,.06);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
 .topbar-brand{color:#0f172a;letter-spacing:-.5px}.topbar-brand:hover{opacity:.85}.mini-avatar{box-shadow:0 0 0 3px #eaf1ff,0 8px 20px rgba(11,92,255,.12)}
