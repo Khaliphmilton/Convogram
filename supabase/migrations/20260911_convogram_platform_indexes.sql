@@ -1,4 +1,8 @@
 -- Convogram platform performance/search indexes
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'open';
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS resolution_notes TEXT;
 CREATE INDEX IF NOT EXISTS idx_profiles_username_trgm ON public.profiles USING gin (username gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_profiles_display_name_trgm ON public.profiles USING gin (display_name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_communities_name_trgm ON public.communities USING gin (name gin_trgm_ops);
