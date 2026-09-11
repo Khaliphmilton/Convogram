@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
 import { Bell, Camera, Check, Compass, Home, ImagePlus, LogOut, MessageCircle, Plus, Search, Send, Settings, Sparkles, User, Users, Video, X, Zap } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { getFeed, createPost, deletePost, likePost, unlikePost, addComment, isPostLikedByUser } from "./lib/posts";
@@ -68,3 +69,10 @@ function App() {
 }
 
 export default App;
+
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Convogram could not find the #root element.");
+}
+
+createRoot(rootElement).render(<App />);
