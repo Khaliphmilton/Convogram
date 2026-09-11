@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Bell, Check, Heart, MessageCircle, UserPlus, Video, X, Users, Sparkles } from "lucide-react";
 import { getNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "../lib/notifications";
 import { FeatureHub } from "./FeatureHub";
+import "./NotificationsPanelExtras.css";
 
 const icons = { like: Heart, comment: MessageCircle, follow: UserPlus, message: MessageCircle, call: Video, mention: Bell, moment_view: Bell, community_invite: Users };
 
