@@ -9,7 +9,7 @@ export function useShorts() {
 
   useEffect(() => {
     loadShorts();
-  }, []);
+  }, [offset]);
 
   async function loadShorts() {
     try {
