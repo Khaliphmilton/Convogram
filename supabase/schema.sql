@@ -307,7 +307,8 @@ BEGIN
     NEW.id,
     'user_' || SUBSTR(NEW.id::text, 1, 8),
     COALESCE(NEW.raw_user_meta_data->>'full_name', 'User')
-  );
+  )
+  ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -338,18 +339,17 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 -- PROFILES POLICIES
 -- ============================================================================
 
--- Users can view public profiles
+-- Users can view public profiles and their own profile
 CREATE POLICY "Public profiles are viewable"
   ON profiles FOR SELECT
-  USING (NOT is_private OR auth.uid() = id OR EXISTS (
-    SELECT 1 FROM follows
-    WHERE follower_id = auth.uid() AND following_id = profiles.id
-  ));
-
--- Users can view their own private profile
-CREATE POLICY "Users can view own profile"
-  ON profiles FOR SELECT
-  USING (auth.uid() = id);
+  USING (
+    auth.uid() = id
+    OR NOT is_private
+    OR EXISTS (
+      SELECT 1 FROM follows
+      WHERE follower_id = auth.uid() AND following_id = profiles.id
+    )
+  );
 
 -- Users can update their own profile
 CREATE POLICY "Users can update own profile"
@@ -366,15 +366,15 @@ CREATE POLICY "Users can create own profile"
 -- POSTS POLICIES
 -- ============================================================================
 
--- Anyone can view posts from non-private accounts
+-- Anyone can view posts from non-private accounts or posts they own
 CREATE POLICY "View posts from public accounts"
   ON posts FOR SELECT
   USING (
-    EXISTS (
+    auth.uid() = user_id
+    OR EXISTS (
       SELECT 1 FROM profiles
       WHERE profiles.id = posts.user_id AND NOT profiles.is_private
     )
-    OR auth.uid() = user_id
     OR EXISTS (
       SELECT 1 FROM follows
       WHERE follower_id = auth.uid() AND following_id = posts.user_id
@@ -430,7 +430,7 @@ CREATE POLICY "Users can delete own moments"
 -- LIKES POLICIES
 -- ============================================================================
 
--- Anyone can view likes on public posts
+-- Anyone can view likes on public posts or likes they created
 CREATE POLICY "View likes"
   ON likes FOR SELECT
   USING (
@@ -637,11 +637,12 @@ CREATE POLICY "Remove self from conversation"
   ON conversation_members FOR DELETE
   USING (user_id = auth.uid());
 
--- Admins/owners can remove members
-CREATE POLICY "Admins can remove members"
+-- Admins/owners can remove members from conversations
+CREATE POLICY "Admins can remove conversation members"
   ON conversation_members FOR DELETE
   USING (
-    EXISTS (
+    user_id != auth.uid()
+    AND EXISTS (
       SELECT 1 FROM conversation_members AS cm
       WHERE cm.conversation_id = conversation_members.conversation_id
       AND cm.user_id = auth.uid()
@@ -738,13 +739,13 @@ CREATE POLICY "Users can join communities"
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can update their own membership
-CREATE POLICY "Update own membership"
+CREATE POLICY "Update own community membership"
   ON community_members FOR UPDATE
   USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
 
--- Admins can manage members
-CREATE POLICY "Admins can manage members"
+-- Admins can manage community members
+CREATE POLICY "Admins can manage community members"
   ON community_members FOR UPDATE
   USING (
     EXISTS (
@@ -768,11 +769,12 @@ CREATE POLICY "Leave community"
   ON community_members FOR DELETE
   USING (user_id = auth.uid());
 
--- Admins can remove members
-CREATE POLICY "Admins can remove members"
+-- Admins can remove community members
+CREATE POLICY "Admins can remove community members"
   ON community_members FOR DELETE
   USING (
-    EXISTS (
+    user_id != auth.uid()
+    AND EXISTS (
       SELECT 1 FROM community_members AS cm
       WHERE cm.community_id = community_members.community_id
       AND cm.user_id = auth.uid()
@@ -789,10 +791,12 @@ CREATE POLICY "View own notifications"
   ON notifications FOR SELECT
   USING (auth.uid() = user_id);
 
--- System can insert notifications
+-- System can insert notifications (disabled by default for direct insert)
+-- Notifications should be created via application logic or database functions
+-- Enabling this requires trusted application control only
 CREATE POLICY "System can create notifications"
   ON notifications FOR INSERT
-  WITH CHECK (TRUE);
+  WITH CHECK (FALSE);
 
 -- Users can mark their notifications as read
 CREATE POLICY "Update own notifications"
