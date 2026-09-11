@@ -1,0 +1,110 @@
+.moments-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 12px 0;
+  margin-bottom: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.moments-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.moments-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.moments-row::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+.moment-item {
+  flex: 0 0 62px;
+  cursor: pointer;
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #e8efff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+}
+
+.moment-item:hover {
+  transform: scale(1.05);
+}
+
+.moment-circle {
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  background: #e8efff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0b5cff;
+  font-weight: bold;
+}
+
+.moment-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.moment-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.5));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px;
+  color: white;
+  font-size: 11px;
+}
+
+.moment-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid white;
+  object-fit: cover;
+  margin-bottom: 4px;
+}
+
+.moment-name {
+  text-align: center;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.add-moment {
+  position: relative;
+}
+
+.add-moment:hover .moment-circle {
+  background: #dbeafe;
+}
+
+.moments-loading,
+.moments-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.moments-error {
+  color: #ef4444;
+}
