@@ -318,6 +318,48 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================================
+-- SECURITY DEFINER HELPER FUNCTIONS FOR RLS CHECKS
+-- ============================================================================
+
+-- Safe helper to check if user is a conversation member
+CREATE OR REPLACE FUNCTION is_conversation_member(p_conversation_id UUID, p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM conversation_members
+    WHERE conversation_id = p_conversation_id
+    AND user_id = p_user_id
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Safe helper to check if user is conversation admin
+CREATE OR REPLACE FUNCTION is_conversation_admin(p_conversation_id UUID, p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM conversation_members
+    WHERE conversation_id = p_conversation_id
+    AND user_id = p_user_id
+    AND role IN ('owner', 'admin')
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Safe helper to check if user is community admin
+CREATE OR REPLACE FUNCTION is_community_admin(p_community_id UUID, p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM community_members
+    WHERE community_id = p_community_id
+    AND user_id = p_user_id
+    AND role IN ('owner', 'admin')
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ============================================================================
 
@@ -401,18 +443,21 @@ CREATE POLICY "Users can delete own posts"
 -- MOMENTS POLICIES
 -- ============================================================================
 
--- Users can view moments from accounts they follow and non-private accounts
+-- Users can view moments from accounts they follow, non-private accounts, and non-expired moments
 CREATE POLICY "View moments from public accounts and follows"
   ON moments FOR SELECT
   USING (
-    auth.uid() = user_id
-    OR EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = moments.user_id AND NOT profiles.is_private
-    )
-    OR EXISTS (
-      SELECT 1 FROM follows
-      WHERE follower_id = auth.uid() AND following_id = moments.user_id
+    moments.expires_at > NOW()
+    AND (
+      auth.uid() = user_id
+      OR EXISTS (
+        SELECT 1 FROM profiles
+        WHERE profiles.id = moments.user_id AND NOT profiles.is_private
+      )
+      OR EXISTS (
+        SELECT 1 FROM follows
+        WHERE follower_id = auth.uid() AND following_id = moments.user_id
+      )
     )
   );
 
@@ -550,11 +595,7 @@ CREATE POLICY "Users can unfollow"
 CREATE POLICY "View own conversations"
   ON conversations FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM conversation_members
-      WHERE conversation_members.conversation_id = conversations.id
-      AND conversation_members.user_id = auth.uid()
-    )
+    is_conversation_member(id, auth.uid())
   );
 
 -- Users can create conversations
@@ -567,21 +608,11 @@ CREATE POLICY "Update own conversations"
   ON conversations FOR UPDATE
   USING (
     auth.uid() = created_by
-    OR EXISTS (
-      SELECT 1 FROM conversation_members
-      WHERE conversation_members.conversation_id = conversations.id
-      AND conversation_members.user_id = auth.uid()
-      AND conversation_members.role IN ('owner', 'admin')
-    )
+    OR is_conversation_admin(id, auth.uid())
   )
   WITH CHECK (
     auth.uid() = created_by
-    OR EXISTS (
-      SELECT 1 FROM conversation_members
-      WHERE conversation_members.conversation_id = conversations.id
-      AND conversation_members.user_id = auth.uid()
-      AND conversation_members.role IN ('owner', 'admin')
-    )
+    OR is_conversation_admin(id, auth.uid())
   );
 
 -- ============================================================================
@@ -593,43 +624,24 @@ CREATE POLICY "View conversation members"
   ON conversation_members FOR SELECT
   USING (
     user_id = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM conversation_members AS cm
-      WHERE cm.conversation_id = conversation_members.conversation_id
-      AND cm.user_id = auth.uid()
-    )
+    OR is_conversation_member(conversation_id, auth.uid())
   );
 
 -- Users can only add members to conversations they own or admin
 CREATE POLICY "Add conversation members"
   ON conversation_members FOR INSERT
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM conversation_members AS cm
-      WHERE cm.conversation_id = conversation_members.conversation_id
-      AND cm.user_id = auth.uid()
-      AND cm.role IN ('owner', 'admin')
-    )
+    is_conversation_admin(conversation_id, auth.uid())
   );
 
 -- Users can manage members in conversations they own or admin
 CREATE POLICY "Update conversation members"
   ON conversation_members FOR UPDATE
   USING (
-    EXISTS (
-      SELECT 1 FROM conversation_members AS cm
-      WHERE cm.conversation_id = conversation_members.conversation_id
-      AND cm.user_id = auth.uid()
-      AND cm.role IN ('owner', 'admin')
-    )
+    is_conversation_admin(conversation_id, auth.uid())
   )
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM conversation_members AS cm
-      WHERE cm.conversation_id = conversation_members.conversation_id
-      AND cm.user_id = auth.uid()
-      AND cm.role IN ('owner', 'admin')
-    )
+    is_conversation_admin(conversation_id, auth.uid())
   );
 
 -- Users can remove themselves from conversations
@@ -642,12 +654,7 @@ CREATE POLICY "Admins can remove conversation members"
   ON conversation_members FOR DELETE
   USING (
     user_id != auth.uid()
-    AND EXISTS (
-      SELECT 1 FROM conversation_members AS cm
-      WHERE cm.conversation_id = conversation_members.conversation_id
-      AND cm.user_id = auth.uid()
-      AND cm.role IN ('owner', 'admin')
-    )
+    AND is_conversation_admin(conversation_id, auth.uid())
   );
 
 -- ============================================================================
@@ -658,11 +665,7 @@ CREATE POLICY "Admins can remove conversation members"
 CREATE POLICY "View messages"
   ON messages FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM conversation_members
-      WHERE conversation_members.conversation_id = messages.conversation_id
-      AND conversation_members.user_id = auth.uid()
-    )
+    is_conversation_member(conversation_id, auth.uid())
   );
 
 -- Users can send messages to conversations they belong to
@@ -670,11 +673,7 @@ CREATE POLICY "Send messages"
   ON messages FOR INSERT
   WITH CHECK (
     auth.uid() = sender_id
-    AND EXISTS (
-      SELECT 1 FROM conversation_members
-      WHERE conversation_members.conversation_id = messages.conversation_id
-      AND conversation_members.user_id = auth.uid()
-    )
+    AND is_conversation_member(conversation_id, auth.uid())
   );
 
 -- Users can update their own messages
@@ -707,21 +706,11 @@ CREATE POLICY "Update own communities"
   ON communities FOR UPDATE
   USING (
     auth.uid() = owner_id
-    OR EXISTS (
-      SELECT 1 FROM community_members
-      WHERE community_members.community_id = communities.id
-      AND community_members.user_id = auth.uid()
-      AND community_members.role IN ('owner', 'admin')
-    )
+    OR is_community_admin(id, auth.uid())
   )
   WITH CHECK (
     auth.uid() = owner_id
-    OR EXISTS (
-      SELECT 1 FROM community_members
-      WHERE community_members.community_id = communities.id
-      AND community_members.user_id = auth.uid()
-      AND community_members.role IN ('owner', 'admin')
-    )
+    OR is_community_admin(id, auth.uid())
   );
 
 -- ============================================================================
@@ -748,20 +737,10 @@ CREATE POLICY "Update own community membership"
 CREATE POLICY "Admins can manage community members"
   ON community_members FOR UPDATE
   USING (
-    EXISTS (
-      SELECT 1 FROM community_members AS cm
-      WHERE cm.community_id = community_members.community_id
-      AND cm.user_id = auth.uid()
-      AND cm.role IN ('owner', 'admin')
-    )
+    is_community_admin(community_id, auth.uid())
   )
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM community_members AS cm
-      WHERE cm.community_id = community_members.community_id
-      AND cm.user_id = auth.uid()
-      AND cm.role IN ('owner', 'admin')
-    )
+    is_community_admin(community_id, auth.uid())
   );
 
 -- Users can leave communities
@@ -774,12 +753,7 @@ CREATE POLICY "Admins can remove community members"
   ON community_members FOR DELETE
   USING (
     user_id != auth.uid()
-    AND EXISTS (
-      SELECT 1 FROM community_members AS cm
-      WHERE cm.community_id = community_members.community_id
-      AND cm.user_id = auth.uid()
-      AND cm.role IN ('owner', 'admin')
-    )
+    AND is_community_admin(community_id, auth.uid())
   );
 
 -- ============================================================================
