@@ -24,7 +24,7 @@ export async function getConversationDetails(conversationId) {
 export async function getMessages(conversationId, limit = 100) {
   const { data, error } = await supabase
     .from("messages")
-    .select(`*, profiles:sender_id(id, username, display_name, avatar_url), message_reactions(count)`)
+    .select(`*, profiles:sender_id(id, username, display_name, avatar_url), message_reactions(*)`)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true })
     .limit(limit);
@@ -32,20 +32,32 @@ export async function getMessages(conversationId, limit = 100) {
   return data || [];
 }
 
-export async function sendMessage(conversationId, senderId, content, messageType = "text", mediaUrl = null) {
+export async function sendMessage(conversationId, senderId, content, messageType = "text", mediaUrl = null, replyToId = null) {
   const { data, error } = await supabase
     .from("messages")
-    .insert([{ conversation_id: conversationId, sender_id: senderId, content: messageType === "text" ? content : null, message_type: messageType, media_url: mediaUrl }])
+    .insert([{ conversation_id: conversationId, sender_id: senderId, content: messageType === "text" ? content : null, message_type: messageType, media_url: mediaUrl, reply_to_id: replyToId || null }])
     .select(`*, profiles:sender_id(id, username, display_name, avatar_url)`)
     .single();
   if (error) throw error;
   return data;
 }
 
-export function subscribeToConversation(conversationId, onInsert) {
+export async function deleteMessage(messageId) {
+  const { data, error } = await supabase
+    .from("messages")
+    .update({ is_deleted: true, content: null, media_url: null, updated_at: new Date().toISOString() })
+    .eq("id", messageId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export function subscribeToConversation(conversationId, onInsert, onUpdate) {
   const channel = supabase
     .channel(`convogram-chat-${conversationId}`)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, (payload) => onInsert(payload.new))
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, (payload) => onUpdate?.(payload.new))
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
