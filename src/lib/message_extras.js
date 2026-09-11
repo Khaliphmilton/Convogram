@@ -3,11 +3,15 @@ import { supabase } from "./supabase";
 export async function searchMessages(userId, query, limit = 50) {
   const term = query?.trim();
   if (!term) return [];
+  const { data: memberships, error: membershipError } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", userId);
+  if (membershipError) throw membershipError;
+  const conversationIds = (memberships || []).map((row) => row.conversation_id);
+  if (!conversationIds.length) return [];
   const { data, error } = await supabase
     .from("messages")
     .select("id, conversation_id, sender_id, content, message_type, media_url, created_at, is_deleted")
+    .in("conversation_id", conversationIds)
     .ilike("content", `%${term}%`)
-    .in("conversation_id", supabase.from("conversation_members").select("conversation_id").eq("user_id", userId))
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
