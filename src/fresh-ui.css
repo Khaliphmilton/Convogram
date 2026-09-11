@@ -1,0 +1,63 @@
+/* Convogram fresh product shell — structural redesign layer. Existing feature CSS is intentionally preserved underneath. */
+:root{--fresh-bg:#070a10;--fresh-surface:#0d121b;--fresh-surface-2:#111823;--fresh-line:#1b2431;--fresh-text:#f5f7fb;--fresh-muted:#8d98a9;--fresh-accent:#7c5cff;--fresh-accent-2:#26d9c2}
+html,body,#root{min-height:100%;background:var(--fresh-bg)!important}
+body{color:var(--fresh-text)!important;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+.app-shell{min-height:100vh!important;background:var(--fresh-bg)!important;padding:0!important}
+.topbar{position:fixed!important;left:0!important;top:0!important;bottom:0!important;width:88px!important;height:auto!important;z-index:80!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:space-between!important;padding:22px 12px!important;background:#090d14!important;border:0!important;border-right:1px solid var(--fresh-line)!important;border-radius:0!important;box-shadow:none!important;backdrop-filter:none!important}
+.topbar-brand{display:flex!important;flex-direction:column!important;gap:9px!important;width:64px!important;color:var(--fresh-text)!important;font-size:10px!important;letter-spacing:.2px!important;text-transform:uppercase!important;background:transparent!important}
+.topbar-brand strong{font-size:10px!important;font-weight:800!important;writing-mode:vertical-rl!important;transform:rotate(180deg)!important;letter-spacing:2px!important}
+.small-logo,.logo-mark{width:44px!important;height:44px!important;border-radius:14px!important;background:linear-gradient(145deg,#7c5cff,#2a9fff)!important;box-shadow:none!important;color:#fff!important}
+.topbar-actions{display:flex!important;flex-direction:column!important;gap:10px!important;align-items:center!important}
+.topbar-actions>button{width:44px!important;height:44px!important;border-radius:13px!important;background:#101722!important;border:1px solid var(--fresh-line)!important;color:#aeb8c7!important;box-shadow:none!important}
+.topbar-actions>button:hover{background:#151d29!important;color:#fff!important}
+.mini-avatar{box-shadow:0 0 0 1px #2a3442!important}
+.search-bar{position:fixed!important;left:108px!important;top:20px!important;width:min(520px,calc(100vw - 150px))!important;z-index:95!important;background:#101722!important;border:1px solid #263142!important;border-radius:14px!important;box-shadow:0 24px 70px rgba(0,0,0,.4)!important;color:#fff!important}
+.search-bar input{color:#fff!important;background:transparent!important}
+.main-content{margin-left:88px!important;max-width:none!important;width:auto!important;padding:34px clamp(24px,5vw,80px) 120px!important}
+.hero-card{min-height:330px!important;display:flex!important;align-items:flex-end!important;padding:48px!important;border:1px solid #202a38!important;border-radius:0!important;background:radial-gradient(circle at 85% 20%,rgba(124,92,255,.30),transparent 32%),linear-gradient(135deg,#101722 0%,#0a0e15 60%,#101827 100%)!important;box-shadow:none!important;overflow:hidden!important}
+.hero-card h1{font-size:clamp(42px,6vw,76px)!important;line-height:.96!important;letter-spacing:-4px!important;max-width:760px!important}
+.hero-card p{max-width:560px!important;color:#a9b3c2!important;font-size:15px!important}
+.hero-orbit{display:none!important}
+.eyebrow{color:#8995a8!important;letter-spacing:1.7px!important;font-size:10px!important}
+.hero-actions button,.section-header button,.page-title button{border-radius:10px!important}
+.section{margin-top:54px!important}
+.section-header{border-bottom:1px solid var(--fresh-line)!important;padding-bottom:14px!important;margin-bottom:18px!important}
+.section-header h2{font-size:22px!important;letter-spacing:-.5px!important}
+.moments-row{gap:10px!important;overflow-x:auto!important;padding-bottom:4px!important}
+.moment-item{min-width:112px!important;height:164px!important;border-radius:10px!important;border:1px solid #263142!important;box-shadow:none!important}
+.moment-item:hover{transform:none!important;box-shadow:none!important}
+.section:has(.post-card){max-width:760px!important;margin-left:auto!important;margin-right:auto!important}
+.post-card{border-radius:0!important;border-left:0!important;border-right:0!important;border-top:1px solid var(--fresh-line)!important;border-bottom:1px solid var(--fresh-line)!important;background:transparent!important;box-shadow:none!important;margin-bottom:0!important}
+.post-card:hover{transform:none!important;box-shadow:none!important}
+.post-actions{background:transparent!important}
+.feed-loader,.empty-state{border:1px dashed #263142!important;border-radius:0!important;background:#0a0f17!important;box-shadow:none!important}
+.page-section{max-width:1180px!important;margin:0 auto!important}
+.page-title{padding:0 0 20px!important;border-bottom:1px solid var(--fresh-line)!important;margin-bottom:20px!important}
+.page-title h1{font-size:44px!important;letter-spacing:-2px!important}
+.messages-panel,.community-list,.community-detail,.profile-page{border-radius:0!important;background:#0b1018!important;border:1px solid var(--fresh-line)!important;box-shadow:none!important}
+.conversation-item.selected,.community-list-item.selected{background:#141c28!important}
+.message-row.mine .message-bubble{background:#7256ed!important;box-shadow:none!important}
+.send-button{background:#7256ed!important;box-shadow:none!important}
+.community-layout{grid-template-columns:260px minmax(0,1fr)!important}
+.community-post{border-radius:0!important;background:transparent!important;border-color:var(--fresh-line)!important}
+.profile-page{overflow:hidden!important}
+.profile-cover{height:250px!important;border-radius:0!important;background:radial-gradient(circle at 70% 30%,rgba(38,217,194,.2),transparent 28%),linear-gradient(120deg,#0b111a,#161229 65%,#0d1820)!important}
+.profile-cover:after{display:none!important}
+.profile-avatar{border-color:#0b1018!important;border-width:5px!important}
+.profile-page .profile-header,.profile-page .profile-body{background:#0b1018!important}
+.notification-popover,.composer-modal,.messages-modal{background:#0c121b!important;border:1px solid #263142!important;border-radius:16px!important;box-shadow:0 30px 90px rgba(0,0,0,.5)!important;color:#fff!important}
+.bottom-nav{background:#0b1018!important;border:1px solid #263142!important;border-radius:16px!important;box-shadow:0 20px 60px rgba(0,0,0,.45)!important}
+.nav-button{border-radius:10px!important;color:#7f8b9e!important}.nav-button.active{background:#171229!important;color:#a998ff!important;box-shadow:none!important}
+.primary-button{background:#7c5cff!important;border-radius:10px!important;box-shadow:none!important}.secondary-button{background:#111823!important;border-color:#263142!important;color:#d9e0ea!important;border-radius:10px!important}
+.auth-page,.loading-screen{background:#070a10!important}.auth-card{background:#0d121b!important;border:1px solid #263142!important;border-radius:18px!important;box-shadow:0 30px 90px rgba(0,0,0,.45)!important}.auth-card input{background:#090e15!important;border-color:#263142!important;color:#fff!important}
+.global-error{background:#35171d!important;border-color:#6b2935!important;color:#ffd4d9!important}
+@media(max-width:700px){
+ .topbar{left:0!important;right:0!important;bottom:auto!important;width:100%!important;height:58px!important;display:flex!important;flex-direction:row!important;padding:8px 12px!important;border-right:0!important;border-bottom:1px solid var(--fresh-line)!important}
+ .topbar-brand{width:auto!important;flex-direction:row!important;align-items:center!important}.topbar-brand strong{writing-mode:initial!important;transform:none!important;font-size:12px!important}
+ .topbar-actions{margin-left:auto!important;flex-direction:row!important}.topbar-actions>button{width:38px!important;height:38px!important}
+ .small-logo{width:36px!important;height:36px!important;border-radius:11px!important}
+ .main-content{margin-left:0!important;padding:78px 16px 100px!important}
+ .search-bar{left:12px!important;right:12px!important;top:66px!important;width:auto!important}
+ .hero-card{min-height:420px!important;padding:28px 22px!important;align-items:flex-end!important}.hero-card h1{font-size:42px!important;letter-spacing:-2.5px!important}
+ .section{margin-top:38px!important}.page-title h1{font-size:36px!important}.community-layout{grid-template-columns:1fr!important}
+}
