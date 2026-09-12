@@ -15,8 +15,8 @@ export function VerificationRequestPage({ profile, userId, onBack }) {
 
   useEffect(() => {
     let active = true;
-    if (!userId || !supabase) return;
-    supabase.from("verification_requests").select("status,created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).maybeSingle().then(({ data }) => {
+    if (!supabase) return;
+    supabase.from("verification_requests").select("status,created_at").eq("user_id", userId || "").order("created_at", { ascending: false }).limit(1).maybeSingle().then(({ data }) => {
       if (active && data) setStatus(data);
     });
     return () => { active = false; };
@@ -24,14 +24,54 @@ export function VerificationRequestPage({ profile, userId, onBack }) {
 
   async function submit(event) {
     event.preventDefault();
-    if (!userId || !supabase) return;
-    if (reason.trim().length < 40) { setStatus({ error: "Please explain why this account should be verified (at least 40 characters)." }); return; }
-    setSending(true); setStatus(null);
-    const { data, error } = await supabase.from("verification_requests").insert({ user_id: userId, verification_type: type, identity_name: identityName.trim() || null, reason: reason.trim(), website: website.trim() || null, evidence_url: evidenceUrl.trim() || null }).select().single();
-    if (error) { setStatus({ error: error.message }); setSending(false); return; }
-    const { error: emailError } = await supabase.functions.invoke("notify-verification-request", { body: { request_id: data.id } });
-    setStatus(emailError ? { warning: "Request submitted successfully. Email notification still needs to be configured by Convogram." } : { success: "Request submitted. The Convogram team has been notified for review." });
-    setSending(false);
+    if (sending) return;
+    setStatus(null);
+
+    if (!supabase) {
+      setStatus({ error: "Convogram is not connected to the verification service. Please refresh and try again." });
+      return;
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const authenticatedUserId = authData?.user?.id;
+    if (authError || !authenticatedUserId) {
+      setStatus({ error: "Your login session has expired. Please log out and log in again before submitting." });
+      return;
+    }
+
+    if (reason.trim().length < 40) {
+      setStatus({ error: "Please explain why this account should be verified (at least 40 characters)." });
+      return;
+    }
+
+    setSending(true);
+    try {
+      const { data, error } = await supabase.from("verification_requests").insert({
+        user_id: authenticatedUserId,
+        verification_type: type,
+        identity_name: identityName.trim() || null,
+        reason: reason.trim(),
+        website: website.trim() || null,
+        evidence_url: evidenceUrl.trim() || null
+      }).select("id,status,created_at").single();
+
+      if (error) throw new Error(error.message || "Could not submit your verification request.");
+
+      setStatus({ success: "Request submitted successfully. Convogram will review it." });
+
+      // Email notification is secondary: a notification failure must never make
+      // the user think the database submission failed.
+      const { error: emailError } = await supabase.functions.invoke("notify-verification-request", { body: { request_id: data.id } });
+      if (emailError) {
+        setStatus({ warning: "Request submitted successfully. The review email could not be sent yet, but your request is safely in the Convogram review queue." });
+      }
+      setReason("");
+      setEvidenceUrl("");
+    } catch (error) {
+      setStatus({ error: error?.message || "Could not submit your verification request. Please try again." });
+    } finally {
+      setSending(false);
+    }
   }
 
   return <section className="settings-page">
@@ -43,14 +83,14 @@ export function VerificationRequestPage({ profile, userId, onBack }) {
       {status?.warning && <div className="alert" style={{ marginTop: 16 }}>{status.warning}</div>}
       {status?.status === "pending" && <div className="alert" style={{ marginTop: 16 }}>Your latest verification request is pending review.</div>}
       {status?.status === "verified" && <div className="alert" style={{ marginTop: 16 }}>This account is already verified.</div>}
-      {!status?.success && status?.status !== "verified" && <form onSubmit={submit} style={{ marginTop: 20 }}>
+      {!status?.success && !status?.warning && status?.status !== "verified" && <form onSubmit={submit} style={{ marginTop: 20 }}>
         <label>Account type<select value={type} onChange={e => setType(e.target.value)} style={field}><option value="individual">Individual / public figure</option><option value="creator">Creator</option><option value="business">Business / brand</option><option value="organization">Organization / institution</option><option value="community">Community leader</option></select></label>
         <label style={{ display: "block", marginTop: 14 }}>Name or organization represented<input value={identityName} onChange={e => setIdentityName(e.target.value)} style={field} placeholder="Your real name or organization" /></label>
         <label style={{ display: "block", marginTop: 14 }}>Why should this account be verified?<textarea value={reason} onChange={e => setReason(e.target.value)} style={{ ...field, minHeight: 130, resize: "vertical" }} placeholder="Tell Convogram who you represent, why the account is authentic, and why verification is useful or necessary." /></label>
         <label style={{ display: "block", marginTop: 14 }}>Official website (optional)<input value={website} onChange={e => setWebsite(e.target.value)} style={field} placeholder="https://..." /></label>
         <label style={{ display: "block", marginTop: 14 }}>Evidence link (optional)<input value={evidenceUrl} onChange={e => setEvidenceUrl(e.target.value)} style={field} placeholder="A public profile, article, organization page, etc." /></label>
         <div style={{ marginTop: 14, fontSize: 13, opacity: .7 }}>Convogram reviews authenticity, profile completeness, activity, account standing, public presence and impersonation risk. Meeting the criteria does not guarantee approval.</div>
-        <button className="primary" disabled={sending} style={{ marginTop: 18 }}><Send size={17} /> {sending ? "Submitting…" : "Submit verification request"}</button>
+        <button type="submit" className="primary" disabled={sending} style={{ marginTop: 18, opacity: sending ? .7 : 1 }}><Send size={17} /> {sending ? "Submitting…" : "Submit verification request"}</button>
       </form>}
       <div style={{ marginTop: 18, fontSize: 13, opacity: .65, display: "flex", gap: 6, alignItems: "center" }}><ExternalLink size={14} /> Verification decisions are made by Convogram, not automatically by follower count.</div>
     </div>
