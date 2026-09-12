@@ -64,6 +64,7 @@ function App() {
   const [active, setActiveState] = useState("home");
 const activeRef = useRef("home");
 const navigationStackRef = useRef([]);
+const ignoreNextPopRef = useRef(false);
 
 // All page changes go through this wrapper so Android/browser Back
 // can return to the immediately previous Convogram screen.
@@ -84,6 +85,7 @@ function goBack() {
   }
   activeRef.current = previousPage;
   setActiveState(previousPage);
+  ignoreNextPopRef.current = true;
   window.history.back();
 }
 
@@ -94,6 +96,11 @@ useEffect(() => {
   window.history.pushState({ convogram: true, root: true }, "", window.location.href);
 
   const handlePopState = () => {
+    if (ignoreNextPopRef.current) {
+      ignoreNextPopRef.current = false;
+      return;
+    }
+
     const previousPage = navigationStackRef.current.pop();
     if (previousPage) {
       activeRef.current = previousPage;
