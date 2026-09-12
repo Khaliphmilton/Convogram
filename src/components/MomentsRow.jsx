@@ -7,18 +7,25 @@ import './MomentsRow.css';
 
 function Avatar({profile, className=''}) { return profile?.avatar_url ? <img src={profile.avatar_url} className={className} alt=""/> : <div className={`${className} fallback-avatar`}>{(profile?.display_name||profile?.username||'C').slice(0,1).toUpperCase()}</div>; }
 
-function groupMoments(items=[]) {
+function groupMoments(items=[], currentUserId) {
   const map=new Map();
   [...items].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).forEach(moment=>{
     const key=moment.user_id;
     if(!map.has(key)) map.set(key,{userId:key,profile:moment.profiles,moments:[]});
     map.get(key).moments.push(moment);
   });
-  return [...map.values()];
+  const groups=[...map.values()];
+  // Always keep the signed-in user's Moment first, regardless of creation time.
+  const ownIndex=groups.findIndex(group=>group.userId===currentUserId);
+  if(ownIndex>0){
+    const [own]=groups.splice(ownIndex,1);
+    groups.unshift(own);
+  }
+  return groups;
 }
 
 export function MomentsRow({ moments = [], currentUserId, onAddMoment, loading, error }) {
-  const groups=React.useMemo(()=>groupMoments(moments),[moments]);
+  const groups=React.useMemo(()=>groupMoments(moments,currentUserId),[moments,currentUserId]);
   const flatMoments=React.useMemo(()=>groups.flatMap(g=>g.moments),[groups]);
   const [selected,setSelected]=React.useState(null),[index,setIndex]=React.useState(0),[liked,setLiked]=React.useState(false),[likeCount,setLikeCount]=React.useState(0),[viewCount,setViewCount]=React.useState(0),[viewers,setViewers]=React.useState([]),[viewersOpen,setViewersOpen]=React.useState(false),[busy,setBusy]=React.useState(false),[paused,setPaused]=React.useState(false),[progress,setProgress]=React.useState(0),[muted,setMuted]=React.useState(true),[reply,setReply]=React.useState(''),[moreOpen,setMoreOpen]=React.useState(false),[videoDuration,setVideoDuration]=React.useState(5),[viewedIds,setViewedIds]=React.useState(new Set());
   const timerRef=React.useRef(null),touchRef=React.useRef({x:0,y:0}),videoRef=React.useRef(null),replyRef=React.useRef(null);
@@ -73,10 +80,12 @@ export function MomentsRow({ moments = [], currentUserId, onAddMoment, loading, 
 
   if(error)return <div className="moments-error"><AlertCircle size={24}/><p>Failed to load Moments</p></div>;
   if(loading)return <div className="moments-loading"><Loader className="spinning"/></div>;
+  const ownGroup=groups.find(group=>group.userId===currentUserId);
   return <>
     <div className="moments-row">
-      <div className="moment-item add-moment" onClick={onAddMoment} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')onAddMoment?.();}}><div className="moment-circle"><Plus size={24}/></div><span className="add-label">Your Moment</span></div>
-      {groups.map(group=>{const latest=group.moments[group.moments.length-1];const unseen=group.moments.some(m=>m.user_id===currentUserId||!viewedIds.has(m.id));return <div key={group.userId} className="moment-item story-card" onClick={()=>{const firstUnseen=group.moments.findIndex(m=>m.user_id===currentUserId||!viewedIds.has(m.id));const target=firstUnseen>=0?firstUnseen:group.moments.length-1;const offset=flatMoments.findIndex(m=>m.id===group.moments[target].id);open(group.moments[target],offset);}} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')open(latest,flatMoments.findIndex(m=>m.id===latest.id));}}><div className={`moment-ring ${unseen?'unseen':''}`}><img src={latest.media_url} alt="Moment" className="moment-preview"/></div><div className="moment-overlay"><Avatar profile={group.profile} className="moment-avatar"/><span className="moment-name">{group.profile?.display_name||group.profile?.username||'Moment'}<VerifiedBadge verified={group.profile?.is_verified} verificationStatus={group.profile?.verification_status} size={13}/></span></div></div>;})}
+      {!ownGroup&&<div className="moment-item add-moment" onClick={onAddMoment} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')onAddMoment?.();}}><div className="moment-circle"><Plus size={24}/></div><span className="add-label">Your Moment</span></div>}
+      {groups.map(group=>{const latest=group.moments[group.moments.length-1];const unseen=group.moments.some(m=>m.user_id===currentUserId||!viewedIds.has(m.id));return <div key={group.userId} className="moment-item story-card" onClick={()=>{const firstUnseen=group.moments.findIndex(m=>m.user_id===currentUserId||!viewedIds.has(m.id));const target=firstUnseen>=0?firstUnseen:group.moments.length-1;const offset=flatMoments.findIndex(m=>m.id===group.moments[target].id);open(group.moments[target],offset);}} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')open(latest,flatMoments.findIndex(m=>m.id===latest.id));}}><div className={`moment-ring ${unseen?'unseen':''}`}><img src={latest.media_url} alt="Moment" className="moment-preview"/></div><div className="moment-overlay"><Avatar profile={group.profile} className="moment-avatar"/><span className="moment-name">{group.userId===currentUserId?'Your Moment':(group.profile?.display_name||group.profile?.username||'Moment')}<VerifiedBadge verified={group.profile?.is_verified} verificationStatus={group.profile?.verification_status} size={13}/></span></div></div>;})}
+      {ownGroup&&<button className="moment-add-overlay" onClick={onAddMoment} aria-label="Add another Moment"><Plus size={18}/></button>}
     </div>
     {selected&&<div className="story-viewer" onClick={close}>
       <div className="story-shell" onClick={e=>e.stopPropagation()} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
