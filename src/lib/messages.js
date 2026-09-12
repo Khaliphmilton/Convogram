@@ -28,12 +28,41 @@ export function consumePendingDirectConversationId() {
 export async function getConversations(userId, limit = 50) {
   const { data, error } = await supabase
     .from("conversation_members")
-    .select(`conversation_id, joined_at, role, conversations(*, profiles:created_by(id, username, display_name, avatar_url))`)
+    .select(`conversation_id, joined_at, role, last_read_at, conversations(*, profiles:created_by(id, username, display_name, avatar_url))`)
     .eq("user_id", userId)
     .order("joined_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  return data?.map((m) => m.conversations).filter(Boolean);
+
+  const rows = (data || []).filter(row => row.conversations);
+  const ids = rows.map(row => row.conversation_id).filter(Boolean);
+  const unreadByConversation = new Map();
+  if (ids.length) {
+    const { data: incoming, error: messageError } = await supabase
+      .from("messages")
+      .select("id, conversation_id, sender_id, created_at, is_deleted")
+      .in("conversation_id", ids)
+      .neq("sender_id", userId)
+      .eq("is_deleted", false);
+    if (messageError) throw messageError;
+    for (const row of rows) {
+      const lastRead = row.last_read_at ? new Date(row.last_read_at).getTime() : 0;
+      const count = (incoming || []).filter(message => {
+        if (message.conversation_id !== row.conversation_id) return false;
+        return new Date(message.created_at).getTime() > lastRead;
+      }).length;
+      unreadByConversation.set(row.conversation_id, count);
+    }
+  }
+
+  return rows.map(row => {
+    const conversation = { ...row.conversations };
+    const unreadCount = unreadByConversation.get(row.conversation_id) || 0;
+    conversation.unread_count = unreadCount;
+    conversation._display_name = conversation.name || (conversation.type === "group" ? "Group conversation" : "Direct conversation");
+    if (unreadCount > 0) conversation.name = `🔴 ${unreadCount > 99 ? "99+" : unreadCount}  ${conversation._display_name}`;
+    return conversation;
+  });
 }
 
 export async function getDirectConversation(userId, otherUserId) {
@@ -131,6 +160,16 @@ export async function markMessageAsRead(messageId, userId) {
   const { data, error } = await supabase.from("read_receipts").insert([{ message_id: messageId, user_id: userId }]).select().single();
   if (error && error.code !== "23505") throw error;
   return data;
+}
+
+export async function markConversationAsRead(conversationId, userId) {
+  if (!conversationId || !userId) return;
+  const { error } = await supabase
+    .from("conversation_members")
+    .update({ last_read_at: new Date().toISOString() })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId);
+  if (error) throw error;
 }
 
 export async function addMessageReaction(messageId, userId, reaction) {
