@@ -6,6 +6,7 @@ import { getUserPosts } from "../lib/posts";
 import { getUserShorts } from "../lib/shorts";
 import { getUserMoments, recordMomentView, isMomentLikedByUser, likeMoment, unlikeMoment, getMomentViewers } from "../lib/moments";
 import { supabase } from "../lib/supabase";
+import "../profile-fixes.css";
 
 const tabs=[{id:"posts",label:"Posts",icon:Grid3X3},{id:"shorts",label:"Shorts",icon:PlaySquare},{id:"saved",label:"Saved",icon:Bookmark},{id:"liked",label:"Liked",icon:Heart},{id:"tagged",label:"Tagged",icon:Tag}];
 function Avatar({profile,className=""}){return profile?.avatar_url?<img className={className} src={profile.avatar_url} alt=""/>:<div className={`${className} profile-fallback`}>{(profile?.display_name||profile?.username||"C").slice(0,1).toUpperCase()}</div>}
