@@ -15,12 +15,8 @@ function groupMoments(items=[], currentUserId) {
     map.get(key).moments.push(moment);
   });
   const groups=[...map.values()];
-  // Always keep the signed-in user's Moment first, regardless of creation time.
   const ownIndex=groups.findIndex(group=>group.userId===currentUserId);
-  if(ownIndex>0){
-    const [own]=groups.splice(ownIndex,1);
-    groups.unshift(own);
-  }
+  if(ownIndex>0){const [own]=groups.splice(ownIndex,1);groups.unshift(own);}
   return groups;
 }
 
@@ -65,7 +61,6 @@ export function MomentsRow({ moments = [], currentUserId, onAddMoment, loading, 
     if(!selected||!currentUserId||selected.user_id===currentUserId||busy||!text.trim())return;
     setBusy(true);try{let conversation=await getDirectConversation(currentUserId,selected.user_id);if(!conversation)conversation=await createConversation(currentUserId,'direct',null,null,[selected.user_id]);await sendMessage(conversation.id,currentUserId,text.trim(),'text');setReply('');}catch(e){console.error(e);window.alert('Could not send the reply. Please try again.');}finally{setBusy(false);}
   };
-  const quickReact=label=>sendReply(`Story reaction: ${label}`);
   const shareMoment=async()=>{
     if(!selected)return;
     const text=`${selected.profiles?.display_name||'Moment'} shared a Moment${selected.caption?`: ${selected.caption}`:''}`;
@@ -105,7 +100,7 @@ export function MomentsRow({ moments = [], currentUserId, onAddMoment, loading, 
           {selected.media_type==='video'?<video ref={videoRef} src={selected.media_url} autoPlay={!paused} muted={muted} playsInline onLoadedMetadata={handleVideoMetadata} onEnded={()=>move(1)}/>:<img src={selected.media_url} alt={selected.caption||'Moment'}/>} 
         </div>
         {selected.caption&&<div className="story-caption">{selected.caption}</div>}
-        {!isOwner&&<div className="story-reactions"><button onClick={()=>quickReact('Like')} disabled={busy}>Like</button><button onClick={()=>quickReact('Love')} disabled={busy}>Love</button><button onClick={()=>quickReact('Celebrate')} disabled={busy}>Celebrate</button></div>}
+        {!isOwner&&<div className="story-reactions"><button onClick={toggleLike} disabled={busy} className={liked?'liked':''}><Heart size={18} fill={liked?'currentColor':'none'}/><span>Like</span><span>{likeCount}</span></button></div>}
         <div className="story-bottom">
           {!isOwner?<form className="story-reply-form" onSubmit={submitReply}><input ref={replyRef} value={reply} onChange={e=>setReply(e.target.value)} placeholder="Reply to this Moment" maxLength={500}/><button type="submit" disabled={busy||!reply.trim()} aria-label="Send reply"><Send size={18}/></button></form>:<div className="story-owner-actions"><button onClick={toggleLike} className={liked?'liked':''}><Heart size={21} fill={liked?'currentColor':'none'}/><span>{likeCount}</span></button><button onClick={()=>setViewersOpen(v=>!v)}><Eye size={21}/><span>{viewCount}</span></button><button onClick={shareMoment}><Send size={20}/><span>Share</span></button></div>}
           {!isOwner&&<div className="story-secondary-actions"><button onClick={shareMoment}><Send size={19}/><span>Share</span></button><button onClick={reshareMoment} disabled={busy}><Repeat2 size={19}/><span>Reshare</span></button></div>}
