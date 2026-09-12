@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bell, Check, Heart, MessageCircle, UserPlus, Video, X, Users } from "lucide-react";
 import { getNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "../lib/notifications";
+import { VerifiedBadge } from "./VerifiedBadge";
 import "./NotificationsPanelExtras.css";
 
 const icons = {
@@ -45,13 +46,14 @@ export function NotificationsPanel({ userId, onClose }) {
 
   function text(item) {
     const name = item.profiles?.display_name || item.profiles?.username || "Someone";
-    return item.type === "like" ? `${name} liked your post.`
-      : item.type === "comment" ? `${name} commented on your post.`
-      : item.type === "follow" ? `${name} started following you.`
-      : item.type === "message" ? `${name} sent you a message.`
-      : item.type === "call" ? `${name} started a call.`
-      : item.type === "community_invite" ? `${name} invited you to a community.`
-      : `${name} interacted with you.`;
+    const badge = <VerifiedBadge verified={item.profiles?.is_verified} verificationStatus={item.profiles?.verification_status} size={15}/>;
+    return item.type === "like" ? <>{name}{badge} liked your post.</>
+      : item.type === "comment" ? <>{name}{badge} commented on your post.</>
+      : item.type === "follow" ? <>{name}{badge} started following you.</>
+      : item.type === "message" ? <>{name}{badge} sent you a message.</>
+      : item.type === "call" ? <>{name}{badge} started a call.</>
+      : item.type === "community_invite" ? <>{name}{badge} invited you to a community.</>
+      : <>{name}{badge} interacted with you.</>;
   }
 
   const unreadCount = useMemo(() => items.filter((item) => !item.is_read).length, [items]);
