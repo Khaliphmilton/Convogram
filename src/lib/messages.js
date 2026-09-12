@@ -10,6 +10,12 @@ export async function getConversations(userId, limit = 50) {
   if (error) throw error;
   const rows = (data || []).filter(row => row.conversations);
   const ids = rows.map(row => row.conversation_id).filter(Boolean);
+  const otherProfiles = new Map();
+  if (ids.length) {
+    const { data: members, error: memberError } = await supabase.from("conversation_members").select(`conversation_id, user_id, profiles:user_id(id, username, display_name, display_name, avatar_url, is_verified)`).in("conversation_id", ids).neq("user_id", userId);
+    if (memberError) throw memberError;
+    for (const member of members || []) if (member.profiles) otherProfiles.set(member.conversation_id, member.profiles);
+  }
   const unreadByConversation = new Map();
   if (ids.length) {
     const { data: incoming, error: messageError } = await supabase.from("messages").select("id, conversation_id, sender_id, created_at, is_deleted").in("conversation_id", ids).neq("sender_id", userId).eq("is_deleted", false);
@@ -20,7 +26,7 @@ export async function getConversations(userId, limit = 50) {
       unreadByConversation.set(row.conversation_id, count);
     }
   }
-  return rows.map(row => { const conversation = { ...row.conversations }; conversation.unread_count = unreadByConversation.get(row.conversation_id) || 0; conversation._display_name = conversation.name || (conversation.type === "group" ? "Group conversation" : "Direct conversation"); return conversation; });
+  return rows.map(row => { const conversation = { ...row.conversations }; conversation.unread_count = unreadByConversation.get(row.conversation_id) || 0; conversation._direct_profile = otherProfiles.get(row.conversation_id) || null; conversation._display_name = conversation.name || conversation._direct_profile?.display_name || conversation._direct_profile?.username || (conversation.type === "group" ? "Group conversation" : "Direct conversation"); return conversation; });
 }
 
 export async function getDirectConversation(userId, otherUserId) { if (!userId || !otherUserId || userId === otherUserId) return null; const { data: mine, error: mineError } = await supabase.from("conversation_members").select("conversation_id, conversations!inner(id, type, name, avatar_url, created_by, created_at, updated_at)").eq("user_id", userId).eq("conversations.type", "direct"); if (mineError) throw mineError; const ids = (mine || []).map(row => row.conversation_id).filter(Boolean); if (!ids.length) return null; const { data: theirs, error: theirsError } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", otherUserId).in("conversation_id", ids); if (theirsError) throw theirsError; const targetId = theirs?.[0]?.conversation_id; const conversation = targetId ? (mine.find(row => row.conversation_id === targetId)?.conversations || null) : null; rememberChat(conversation?.id); return conversation; }
