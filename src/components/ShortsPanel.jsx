@@ -5,7 +5,7 @@ import { publishShort } from "../lib/shorts_publish";
 import { VerifiedBadge } from "./VerifiedBadge";
 import "./ShortsPanel.css";
 
-export function ShortsPanel({ shorts = [], userId }) {
+export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
   const [items, setItems] = useState(shorts);
   const [commentsFor, setCommentsFor] = useState(null);
   const [comments, setComments] = useState([]);
@@ -19,6 +19,7 @@ export function ShortsPanel({ shorts = [], userId }) {
   const [muted, setMuted] = useState(true);
   const feedRef = useRef(null);
   const videoRefs = useRef(new Map());
+  const swipeStartRef = useRef(null);
 
   useEffect(() => {
     setItems(shorts);
@@ -63,11 +64,33 @@ export function ShortsPanel({ shorts = [], userId }) {
 
   function toggleMute() { setMuted((current) => !current); }
 
+  function handleTouchStart(event, short) {
+    if (!onOpenCreator) return;
+    const touch = event.touches?.[0];
+    if (touch) swipeStartRef.current = { x: touch.clientX, y: touch.clientY, short };
+  }
+
+  function handleTouchEnd(event) {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || !onOpenCreator) return;
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    // A deliberate left swipe opens the creator's profile. Ignore mostly vertical swipes.
+    if (dx < -80 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+      const creator = start.short.profiles;
+      const creatorId = creator?.id || start.short.user_id || start.short.creator_id;
+      if (creatorId) onOpenCreator({ ...(creator || {}), id: creatorId });
+    }
+  }
+
   return <div className="shorts-panel">
     <div className="shorts-create-bar"><button onClick={() => setCreateOpen((v) => !v)}><Upload size={17} /> Create Short</button>{error && <span>{error}</span>}</div>
     {createOpen && <div className="shorts-create-form"><div className="shorts-create-title"><Video size={18} /><strong>New Short</strong></div><label className="short-file-label"><Upload size={17} />{shortFile ? shortFile.name : "Choose video"}<input type="file" accept="video/*" hidden onChange={(e) => setShortFile(e.target.files?.[0] || null)} /></label><input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption" /><input value={soundName} onChange={(e) => setSoundName(e.target.value)} placeholder="Sound name (optional)" /><button onClick={create} disabled={publishing}>{publishing ? "Publishing…" : "Publish"}</button></div>}
     {items.length ? <div className="shorts-panel-feed" ref={feedRef} aria-label="Shorts video feed">
-      {items.map((short) => <article className="shorts-panel-card" key={short.id}>
+      {items.map((short) => <article className="shorts-panel-card" key={short.id} onTouchStart={(event) => handleTouchStart(event, short)} onTouchEnd={handleTouchEnd}>
         <video ref={(node) => { if (node) videoRefs.current.set(short.id, node); else videoRefs.current.delete(short.id); }} data-short-video src={short.video_url || short.media_url} autoPlay muted={muted} loop playsInline preload="metadata" onClick={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); else e.currentTarget.pause(); }} />
         <div className="shorts-overlay"><div className="shorts-owner"><strong>@{short.profiles?.username || "creator"}</strong><VerifiedBadge verified={short.profiles?.is_verified} verificationStatus={short.profiles?.verification_status} size={16}/></div><p>{short.caption || ""}</p><span>{short.sound_name ? `♫ ${short.sound_name}` : "Original sound"}</span></div>
         <div className="shorts-actions">
