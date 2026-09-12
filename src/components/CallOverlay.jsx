@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
 import { Phone, Video, PhoneOff, Mic, MicOff, VideoOff, Volume2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import "./CallOverlay.css";
@@ -31,7 +32,10 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
   useEffect(() => { callRef.current = call; }, [call]);
   useEffect(() => {
     targetRef.current = { conversationId, remoteUserId, remoteName };
-  }, [conversationId, remoteUserId, remoteName]);
+    if (!global && conversationId && remoteUserId) {
+      window.__convogramCallTarget = { conversationId, remoteUserId, remoteName };
+    }
+  }, [conversationId, remoteUserId, remoteName, global]);
 
   useEffect(() => {
     if (!userId || !supabase) return undefined;
@@ -47,10 +51,13 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
     const startHandler = (e) => {
       const detail = e.detail || {};
       if (global) {
-        if (!detail.global || !detail.remoteUserId || !detail.conversationId || callRef.current) return;
-        startCall(detail.type || "voice", detail.remoteUserId, detail.remoteName || "Contact", detail.conversationId);
+        const target = detail.remoteUserId && detail.conversationId
+          ? { conversationId: detail.conversationId, remoteUserId: detail.remoteUserId, remoteName: detail.remoteName || "Contact" }
+          : window.__convogramCallTarget;
+        if (callRef.current || !target?.remoteUserId || !target?.conversationId) return;
+        startCall(detail.type || "voice", target.remoteUserId, target.remoteName || "Contact", target.conversationId);
       } else {
-        if (detail.global || callRef.current) return;
+        if (window.__convogramGlobalCalls || callRef.current) return;
         const target = targetRef.current;
         if (target.remoteUserId && target.conversationId) startCall(detail.type || "voice", target.remoteUserId, target.remoteName || "Contact", target.conversationId);
       }
@@ -117,7 +124,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
       await pc.setLocalDescription(offer);
       targetRef.current = { conversationId: targetConversationId, remoteUserId: peerId, remoteName: peerName };
       setCall({ callId, type, status: "calling", remoteName: peerName, remoteUserId: peerId, conversationId: targetConversationId });
-      await signal({ kind: "offer", callId, type, offer, conversationId: targetConversationId }, peerId);
+      await signal({ kind: "offer", callId, type, offer, conversationId: targetConversationId, remoteName: peerName }, peerId);
     } catch (err) {
       cleanup(false);
       setError(err.name === "NotAllowedError" ? "Microphone/camera permission was denied." : err.message || "Could not start the call.");
@@ -148,10 +155,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
       return;
     }
     if (payload.kind === "hangup") {
-      if (callRef.current?.callId === payload.callId || incoming?.callId === payload.callId) {
-        cleanup(false);
-        setIncoming(null);
-      }
+      if (callRef.current?.callId === payload.callId || incoming?.callId === payload.callId) cleanup(false);
     }
   }
 
@@ -247,4 +251,18 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
     </div>}
     {error && <div className="call-error">{error}</div>}
   </div>}{error && !call && !incoming && <div className="call-toast" onClick={() => setError("")}>{error}</div>}</>;
+}
+
+if (typeof window !== "undefined" && !window.__convogramGlobalCalls) {
+  window.__convogramGlobalCalls = true;
+  const host = document.createElement("div");
+  host.id = "convogram-global-call-root";
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  const renderGlobal = async () => {
+    const { data } = await supabase.auth.getSession();
+    root.render(data.session?.user?.id ? <CallOverlay global userId={data.session.user.id} /> : null);
+  };
+  renderGlobal();
+  supabase.auth.onAuthStateChange(() => renderGlobal());
 }
