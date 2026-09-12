@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Bell, Lock, LogOut, Shield, UserCog, MessageSquare, Moon, Sun, ChevronRight } from "lucide-react";
+import { ArrowLeft, Bell, Lock, LogOut, Shield, UserCog, MessageSquare, ChevronRight } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 const panelStyle = { marginTop: 12, padding: 18, borderRadius: 16, border: "1px solid rgba(120,140,180,.18)", background: "rgba(255,255,255,.035)" };
@@ -11,7 +11,6 @@ export function SettingsPage({ profile, userId, email, onBack, onEditProfile, on
   const [message, setMessage] = useState("");
   const [privateAccount, setPrivateAccount] = useState(!!profile?.is_private);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => localStorage.getItem("convogram_notifications") !== "off");
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("convogram_theme") !== "light");
 
   const togglePrivacy = async () => {
     if (!userId || !supabase) return;
@@ -36,14 +35,6 @@ export function SettingsPage({ profile, userId, email, onBack, onEditProfile, on
     setMessage(next ? "Notifications enabled." : "Notifications disabled on this device.");
   };
 
-  const toggleTheme = () => {
-    const next = !darkMode;
-    setDarkMode(next);
-    localStorage.setItem("convogram_theme", next ? "dark" : "light");
-    document.documentElement.dataset.theme = next ? "dark" : "light";
-    setMessage(`Appearance set to ${next ? "dark" : "light"}.`);
-  };
-
   const emailUs = (subject) => { window.location.href = `mailto:khaliphindustries@gmail.com?subject=${encodeURIComponent(subject)}`; };
 
   const SettingsRow = ({ icon: Icon, title, description, action, children }) => <>
@@ -65,7 +56,6 @@ export function SettingsPage({ profile, userId, email, onBack, onEditProfile, on
       {open === "notifications" && <div style={panelStyle}><strong>Notifications on this device</strong><button style={actionStyle} onClick={toggleNotifications}>{notificationsEnabled ? "Turn notifications off" : "Turn notifications on"}</button></div>}
       <SettingsRow icon={Lock} title="Account security" description="Manage your password and account protection." action={() => setOpen(open === "security" ? null : "security")} />
       {open === "security" && <div style={panelStyle}><strong>Password</strong><p>Send a secure password-reset email to the address on your Convogram account.</p><button style={actionStyle} onClick={resetPassword}>Send password reset email</button></div>}
-      <button className="settings-row" onClick={toggleTheme}><span style={{display:"inline-flex"}}>{darkMode ? <Moon size={20}/> : <Sun size={20}/>}</span><span><strong>Appearance</strong><small>Currently using {darkMode ? "dark" : "light"} mode. Tap to switch.</small></span><ChevronRight size={18}/></button>
       <SettingsRow icon={MessageSquare} title="Support & feedback" description="Get help or send feedback to Convogram." action={() => setOpen(open === "support" ? null : "support")} />
       {open === "support" && <div style={panelStyle}><strong>We're here to help.</strong><p>Email the Convogram team directly.</p><button style={actionStyle} onClick={() => emailUs("Convogram Support Request")}>Email support</button><button style={actionStyle} onClick={() => emailUs("Convogram Feedback")}>Send feedback</button></div>}
     </div>
