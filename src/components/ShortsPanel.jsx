@@ -52,14 +52,14 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
   }, [muted]);
 
   useEffect(() => {
-    function handlePopState() {
-      if (profileHistoryRef.current) {
-        profileHistoryRef.current = false;
-        setCreatorProfile(null);
-      }
+    function handlePopState(event) {
+      if (!profileHistoryRef.current) return;
+      profileHistoryRef.current = false;
+      event.stopImmediatePropagation();
+      setCreatorProfile(null);
     }
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    window.addEventListener("popstate", handlePopState, { capture: true });
+    return () => window.removeEventListener("popstate", handlePopState, { capture: true });
   }, []);
 
   async function toggleLike(item) {
@@ -83,19 +83,14 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
     const creatorId = creator.id || short.user_id || short.creator_id;
     if (!creatorId) return;
     const nextProfile = { ...creator, id: creatorId };
-    // Add one browser-history entry so the Android/phone Back button behaves
-    // exactly like the in-app Back button and returns to the Shorts feed.
     window.history.pushState({ convogramShortsProfile: true }, "", window.location.href);
     profileHistoryRef.current = true;
     setCreatorProfile(nextProfile);
   }
 
   function closeCreatorProfile() {
-    if (profileHistoryRef.current) {
-      window.history.back();
-    } else {
-      setCreatorProfile(null);
-    }
+    if (profileHistoryRef.current) window.history.back();
+    else setCreatorProfile(null);
   }
 
   function handleTouchStart(event, short) {
