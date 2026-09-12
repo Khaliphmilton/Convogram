@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Search, UserPlus, Users, X } from "lucide-react";
 import { getFollowers, getFollowing } from "../lib/profiles";
+import { VerifiedBadge } from "./VerifiedBadge";
 import "../profile-fixes.css";
 
 function Avatar({ profile }) {
@@ -94,7 +95,7 @@ export function PeoplePage({ userId, mode = "followers", onBack, onOpenProfile }
                 <button className="people-person" onClick={() => onOpenProfile?.(person)}>
                   <Avatar profile={person} />
                   <span className="people-person-copy">
-                    <strong>{person.display_name || person.username || "Convogram User"}</strong>
+                    <strong>{person.display_name || person.username || "Convogram User"}<VerifiedBadge verified={person.is_verified} verificationStatus={person.verification_status} size={16}/></strong>
                     <small>@{person.username || "user"}</small>
                   </span>
                 </button>
