@@ -54,3 +54,62 @@ function enhance(composer){if(!composer||composer.dataset.cgEnhanced==='1')retur
 function scan(){injectStyle();document.querySelectorAll('.composer').forEach(enhance)}
 new MutationObserver(scan).observe(document.body,{childList:true,subtree:true});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scan,{once:true});else scan();
+
+// Open the device media picker before the Convogram post editor.
+// The existing React composer is opened only after the user selects a photo/video.
+let openingPostFromPicker = false;
+function isPostTrigger(target){
+  const el=target?.closest?.('.top-create, .create-nav, .section-actions button');
+  if(!el || el.closest('.cg-composer')) return null;
+  const text=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+  if(el.classList.contains('top-create') || el.classList.contains('create-nav') || text==='post' || text==='create post') return el;
+  return null;
+}
+async function pickMediaBeforePost(trigger){
+  if(openingPostFromPicker)return;
+  openingPostFromPicker=true;
+  const input=document.createElement('input');
+  input.type='file';
+  input.accept='image/*,video/*';
+  input.style.position='fixed';
+  input.style.width='1px';
+  input.style.height='1px';
+  input.style.opacity='0';
+  input.setAttribute('aria-hidden','true');
+  document.body.appendChild(input);
+  const cleanup=()=>{input.remove();openingPostFromPicker=false};
+  input.addEventListener('change',()=>{
+    const selected=input.files?.[0];
+    if(!selected){cleanup();return}
+    // Let the existing React click handler create the editor, then transfer the selected file.
+    const observer=new MutationObserver(()=>{
+      const composer=document.querySelector('.composer');
+      const composerInput=composer?.querySelector('input[type="file"]');
+      if(!composerInput)return;
+      try{
+        const transfer=new DataTransfer();
+        transfer.items.add(selected);
+        composerInput.files=transfer.files;
+        composerInput.dispatchEvent(new Event('change',{bubbles:true}));
+        observer.disconnect();
+        cleanup();
+      }catch(error){
+        observer.disconnect();
+        cleanup();
+      }
+    });
+    observer.observe(document.body,{childList:true,subtree:true});
+    trigger.click();
+    setTimeout(()=>{observer.disconnect();cleanup()},3000);
+  },{once:true});
+  input.click();
+}
+document.addEventListener('click',(event)=>{
+  if(openingPostFromPicker)return;
+  const trigger=isPostTrigger(event.target);
+  if(!trigger)return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  pickMediaBeforePost(trigger);
+},true);
