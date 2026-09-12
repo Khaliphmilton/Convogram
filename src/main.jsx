@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Bell,
@@ -61,7 +61,52 @@ function App() {
   const [profile, setProfile] = useState(null);
   const [booting, setBooting] = useState(true);
   const [authMode, setAuthMode] = useState("login");
-  const [active, setActive] = useState("home");
+  const [active, setActiveState] = useState("home");
+const activeRef = useRef("home");
+const navigationStackRef = useRef([]);
+
+// All page changes go through this wrapper so Android/browser Back
+// can return to the immediately previous Convogram screen.
+function setActive(nextPage) {
+  if (!nextPage || nextPage === activeRef.current) return;
+  navigationStackRef.current.push(activeRef.current);
+  activeRef.current = nextPage;
+  setActiveState(nextPage);
+  window.history.pushState({ convogram: true }, "", window.location.href);
+}
+
+function goBack() {
+  const previousPage = navigationStackRef.current.pop();
+  if (!previousPage) {
+    // Keep the app inside the SPA instead of allowing Back to exit it.
+    window.history.pushState({ convogram: true }, "", window.location.href);
+    return;
+  }
+  activeRef.current = previousPage;
+  setActiveState(previousPage);
+  window.history.back();
+}
+
+useEffect(() => {
+  // Create an in-app history boundary. This prevents Android/browser
+  // Back from immediately closing the Convogram SPA at Home.
+  window.history.replaceState({ convogram: true }, "", window.location.href);
+  window.history.pushState({ convogram: true, root: true }, "", window.location.href);
+
+  const handlePopState = () => {
+    const previousPage = navigationStackRef.current.pop();
+    if (previousPage) {
+      activeRef.current = previousPage;
+      setActiveState(previousPage);
+    } else {
+      // Re-arm the root boundary so Back never exits the SPA.
+      window.history.pushState({ convogram: true, root: true }, "", window.location.href);
+    }
+  };
+
+  window.addEventListener("popstate", handlePopState);
+  return () => window.removeEventListener("popstate", handlePopState);
+}, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -461,8 +506,6 @@ function App() {
     );
   }
 
-  const backToProfile = () => setActive("profile");
-
   const openAccount = (account) => {
     setProfile(account);
     setStats({ postsCount: 0, followersCount: 0, followingCount: 0 });
@@ -648,7 +691,7 @@ function App() {
           {active === "search" && (
             <SearchPage
               currentUserId={session.user.id}
-              onBack={() => setActive("home")}
+              onBack={goBack}
               onOpenProfile={openAccount}
             />
           )}
@@ -697,7 +740,7 @@ function App() {
           {active === "profile-options" && (
             <ProfileOptionsPage
               profile={profile}
-              onBack={backToProfile}
+              onBack={goBack}
               onEditProfile={() => setActive("edit-profile")}
               onSettings={() => setActive("settings")}
               onLogout={logout}
@@ -707,7 +750,7 @@ function App() {
           {active === "settings" && (
             <SettingsPage
               profile={profile}
-              onBack={backToProfile}
+              onBack={goBack}
               onEditProfile={() => setActive("edit-profile")}
               onLogout={logout}
             />
@@ -717,7 +760,7 @@ function App() {
             <EditProfilePage
               profile={profile}
               userId={session.user.id}
-              onBack={backToProfile}
+              onBack={goBack}
               onProfileUpdated={setProfile}
             />
           )}
