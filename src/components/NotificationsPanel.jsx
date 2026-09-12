@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bell, Check, Heart, MessageCircle, UserPlus, Video, X, Users } from "lucide-react";
 import { getNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "../lib/notifications";
+import { supabase } from "../lib/supabase";
 import { VerifiedBadge } from "./VerifiedBadge";
 import "./NotificationsPanelExtras.css";
 
@@ -19,17 +20,36 @@ export function NotificationsPanel({ userId, onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  async function load() {
+    if (!userId) return;
+    try {
+      const data = await getNotifications(userId, 50);
+      setItems(data || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const data = await getNotifications(userId, 50);
-        if (active) setItems(data || []);
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
+    load().catch(() => { if (active) setLoading(false); });
+
+    const channel = supabase
+      .channel(`notifications-${userId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${userId}`,
+      }, () => {
+        load().catch(() => {});
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
   }, [userId]);
 
   async function read(item) {
