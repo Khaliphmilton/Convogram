@@ -40,7 +40,7 @@ function enhance(composer){if(!composer||composer.dataset.cgEnhanced==='1')retur
  function clearPreview(){stage.querySelector('img,.cg-video')?.remove();preview.classList.remove('is-visible');name.textContent='';type.textContent='';picker?.classList.remove('cg-file-selected')}
  function showPreview(file){stage.querySelector('img,.cg-video')?.remove();if(!file){clearPreview();return}const url=URL.createObjectURL(file);let media;if(file.type.startsWith('video/')){media=document.createElement('video');media.className='cg-video';media.controls=false;media.playsInline=true;media.muted=true;media.autoplay=true;media.loop=true}else{media=document.createElement('img');media.alt='Selected media'}media.src=url;stage.insertBefore(media,remove);preview.classList.add('is-visible');name.textContent=file.name;type.textContent=file.type.startsWith('video/')?'Video':'Photo';picker?.classList.add('cg-file-selected');}
  fileInput.addEventListener('change',()=>showPreview(fileInput.files?.[0]||null));
- remove.addEventListener('click',()=>{fileInput.value='';clearPreview();picker?.classList.remove('cg-file-selected');});
+ remove.addEventListener('click',()=>{fileInput.value='';clearPreview();});
  tools.querySelector('[data-tool="caption"]').addEventListener('click',()=>{textarea.focus();textarea.scrollIntoView({behavior:'smooth',block:'center'})});
  tools.querySelector('[data-tool="mention"]').addEventListener('click',()=>{mentionPanel.classList.toggle('is-open');tools.querySelector('[data-tool="mention"]').classList.toggle('active',mentionPanel.classList.contains('is-open'));if(mentionPanel.classList.contains('is-open'))mentionInput.focus()});
  tools.querySelector('[data-tool="music"]').addEventListener('click',()=>{textarea.focus();textarea.placeholder='Add a caption… Music can be added here';});
@@ -54,62 +54,3 @@ function enhance(composer){if(!composer||composer.dataset.cgEnhanced==='1')retur
 function scan(){injectStyle();document.querySelectorAll('.composer').forEach(enhance)}
 new MutationObserver(scan).observe(document.body,{childList:true,subtree:true});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scan,{once:true});else scan();
-
-// Open the device media picker before the Convogram post editor.
-// The existing React composer is opened only after the user selects a photo/video.
-let openingPostFromPicker = false;
-function isPostTrigger(target){
-  const el=target?.closest?.('.top-create, .create-nav, .section-actions button');
-  if(!el || el.closest('.cg-composer')) return null;
-  const text=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
-  if(el.classList.contains('top-create') || el.classList.contains('create-nav') || text==='post' || text==='create post') return el;
-  return null;
-}
-async function pickMediaBeforePost(trigger){
-  if(openingPostFromPicker)return;
-  openingPostFromPicker=true;
-  const input=document.createElement('input');
-  input.type='file';
-  input.accept='image/*,video/*';
-  input.style.position='fixed';
-  input.style.width='1px';
-  input.style.height='1px';
-  input.style.opacity='0';
-  input.setAttribute('aria-hidden','true');
-  document.body.appendChild(input);
-  const cleanup=()=>{input.remove();openingPostFromPicker=false};
-  input.addEventListener('change',()=>{
-    const selected=input.files?.[0];
-    if(!selected){cleanup();return}
-    // Let the existing React click handler create the editor, then transfer the selected file.
-    const observer=new MutationObserver(()=>{
-      const composer=document.querySelector('.composer');
-      const composerInput=composer?.querySelector('input[type="file"]');
-      if(!composerInput)return;
-      try{
-        const transfer=new DataTransfer();
-        transfer.items.add(selected);
-        composerInput.files=transfer.files;
-        composerInput.dispatchEvent(new Event('change',{bubbles:true}));
-        observer.disconnect();
-        cleanup();
-      }catch(error){
-        observer.disconnect();
-        cleanup();
-      }
-    });
-    observer.observe(document.body,{childList:true,subtree:true});
-    trigger.click();
-    setTimeout(()=>{observer.disconnect();cleanup()},3000);
-  },{once:true});
-  input.click();
-}
-document.addEventListener('click',(event)=>{
-  if(openingPostFromPicker)return;
-  const trigger=isPostTrigger(event.target);
-  if(!trigger)return;
-  event.preventDefault();
-  event.stopPropagation();
-  event.stopImmediatePropagation();
-  pickMediaBeforePost(trigger);
-},true);
