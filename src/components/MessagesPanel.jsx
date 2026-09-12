@@ -65,7 +65,7 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
   async function handleDelete(message) { if (message.sender_id !== userId) return; try { await deleteMessage(message.id); setMessages(c => c.map(i => i.id === message.id ? { ...i, is_deleted: true, content: null, media_url: null } : i)); setReactionMessageId(null); } catch (err) { setError(err.message || "Message could not be deleted."); } }
   async function handleCreateChat(e) { e.preventDefault(); const memberId = newMemberId.trim(); if (!memberId || memberId === userId) return; try { const conversation = await createConversation(userId, "direct", null, null, [memberId]); setConversations(c => [conversation, ...c]); setSelectedId(null); setNewChatOpen(false); setNewMemberId(""); } catch (err) { setError(err.message || "Could not create chat."); } }
   function selectConversation(id) { setReactionMessageId(null); setSelectedId(id); }
-  function backToChats() { setReactionMessageId(null); setReplyingTo(null); setDetails(null); setSelectedId(null); if (onBack) onBack(); }
+  function backToChats() { setReactionMessageId(null); setReplyingTo(null); setDetails(null); setMessages([]); setSelectedId(null); }
 
   const hasConversations = conversations.length > 0;
 
