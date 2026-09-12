@@ -1,0 +1,51 @@
+name: Fix back navigation history guard
+
+on:
+  push:
+    paths:
+      - .github/workflows/fix-back-navigation-guard.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix visible-back history synchronization
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text()
+          s = s.replace(
+              'const navigationStackRef = useRef([]);',
+              'const navigationStackRef = useRef([]);\nconst ignoreNextPopRef = useRef(false);',
+              1,
+          )
+          s = s.replace(
+              '  setActiveState(previousPage);\n  window.history.back();',
+              '  setActiveState(previousPage);\n  ignoreNextPopRef.current = true;\n  window.history.back();',
+              1,
+          )
+          old = '''  const handlePopState = () => {\n    const previousPage = navigationStackRef.current.pop();'''
+          new = '''  const handlePopState = () => {\n    if (ignoreNextPopRef.current) {\n      ignoreNextPopRef.current = false;\n      return;\n    }\n\n    const previousPage = navigationStackRef.current.pop();'''
+          if old not in s:
+              raise SystemExit('popstate marker not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+      - name: Verify
+        run: |
+          grep -q 'ignoreNextPopRef' src/main.jsx
+          grep -q 'window.history.back()' src/main.jsx
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.jsx .github/workflows/fix-back-navigation-guard.yml
+          git commit -m "fix: synchronize visible back button with history" || exit 0
+          git rm .github/workflows/fix-back-navigation-guard.yml
+          git commit -m "chore: remove temporary back guard workflow"
+          git push
