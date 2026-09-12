@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Heart, MessageCircle, Send, Upload, Video, Volume2, VolumeX } from "lucide-react";
 import { getShortComments, isShortLikedByUser, likeShort, unlikeShort, addShortComment } from "../lib/shorts";
 import { publishShort } from "../lib/shorts_publish";
+import { VerifiedBadge } from "./VerifiedBadge";
 import "./ShortsPanel.css";
 
 export function ShortsPanel({ shorts = [], userId }) {
@@ -68,7 +69,7 @@ export function ShortsPanel({ shorts = [], userId }) {
     {items.length ? <div className="shorts-panel-feed" ref={feedRef} aria-label="Shorts video feed">
       {items.map((short) => <article className="shorts-panel-card" key={short.id}>
         <video ref={(node) => { if (node) videoRefs.current.set(short.id, node); else videoRefs.current.delete(short.id); }} data-short-video src={short.video_url || short.media_url} autoPlay muted={muted} loop playsInline preload="metadata" onClick={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); else e.currentTarget.pause(); }} />
-        <div className="shorts-overlay"><strong>@{short.profiles?.username || "creator"}</strong><p>{short.caption || ""}</p><span>{short.sound_name ? `♫ ${short.sound_name}` : "Original sound"}</span></div>
+        <div className="shorts-overlay"><div className="shorts-owner"><strong>@{short.profiles?.username || "creator"}</strong><VerifiedBadge verified={short.profiles?.is_verified} verificationStatus={short.profiles?.verification_status} size={16}/></div><p>{short.caption || ""}</p><span>{short.sound_name ? `♫ ${short.sound_name}` : "Original sound"}</span></div>
         <div className="shorts-actions">
           <button onClick={() => toggleLike(short)} className={short.liked ? "liked" : ""} aria-label="Like"><Heart fill={short.liked ? "currentColor" : "none"} /><small>{short.short_likes?.[0]?.count || 0}</small></button>
           <button onClick={() => openComments(short)} aria-label="Comment"><MessageCircle /><small>{short.short_comments?.[0]?.count || 0}</small></button>
@@ -77,6 +78,6 @@ export function ShortsPanel({ shorts = [], userId }) {
         </div>
       </article>)}
     </div> : <div className="shorts-empty"><Video size={34}/><h2>No Shorts yet</h2><p>Upload a short video to start the feed.</p></div>}
-    {commentsFor && <div className="short-comments-backdrop" onClick={() => setCommentsFor(null)}><div className="short-comments" onClick={(e) => e.stopPropagation()}><div className="short-comments-head"><strong>Comments</strong><button onClick={() => setCommentsFor(null)}>×</button></div><div className="short-comments-list">{comments.map((comment) => <div key={comment.id}><strong>@{comment.profiles?.username || "user"}</strong><span>{comment.content}</span></div>)}</div><form onSubmit={submitComment}><input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Add a comment..." /><button><Send size={17} /></button></form></div></div>}
+    {commentsFor && <div className="short-comments-backdrop" onClick={() => setCommentsFor(null)}><div className="short-comments" onClick={(e) => e.stopPropagation()}><div className="short-comments-head"><strong>Comments</strong><button onClick={() => setCommentsFor(null)}>×</button></div><div className="short-comments-list">{comments.map((comment) => <div key={comment.id}><strong>@{comment.profiles?.username || "user"}<VerifiedBadge verified={comment.profiles?.is_verified} verificationStatus={comment.profiles?.verification_status} size={14}/></strong><span>{comment.content}</span></div>)}</div><form onSubmit={submitComment}><input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Add a comment..." /><button><Send size={17} /></button></form></div></div>}
   </div>;
 }
