@@ -29,24 +29,27 @@ export function MomentsRow({ moments = [], currentUserId, onAddMoment, onViewMom
         <span>Your Moment</span>
       </div>
 
-      {moments.map((moment) => (
+      {moments.map((moment, index) => (
         <div
           key={moment.id}
           className="moment-item"
-          onClick={() => onViewMoment(moment)}
+          onClick={() => onViewMoment(moment, index)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onViewMoment(moment, index); }}
         >
           <img
             src={moment.media_url}
-            alt={moment.profiles?.display_name}
+            alt={moment.profiles?.display_name || 'Moment'}
             className="moment-preview"
           />
           <div className="moment-overlay">
             <img
-              src={moment.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${moment.profiles?.username}`}
-              alt={moment.profiles?.display_name}
+              src={moment.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${moment.profiles?.username || moment.user_id}`}
+              alt={moment.profiles?.display_name || ''}
               className="moment-avatar"
             />
-            <span className="moment-name">{moment.profiles?.display_name}</span>
+            <span className="moment-name">{moment.profiles?.display_name || 'Moment'}</span>
           </div>
         </div>
       ))}
