@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Phone, Video, PhoneOff, Mic, MicOff, VideoOff, Volume2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { registerCallPush } from "../lib/push";
 import "./CallOverlay.css";
 
 const ICE_SERVERS = [
@@ -9,9 +10,7 @@ const ICE_SERVERS = [
   { urls: "stun:stun1.l.google.com:19302" },
 ];
 
-function makeCallId() {
-  return crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-}
+function makeCallId() { return crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`; }
 
 export function CallOverlay({ conversationId = null, userId, remoteUserId = null, remoteName = "Contact", global = false }) {
   const [call, setCall] = useState(null);
@@ -32,9 +31,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
   useEffect(() => { callRef.current = call; }, [call]);
   useEffect(() => {
     targetRef.current = { conversationId, remoteUserId, remoteName };
-    if (!global && conversationId && remoteUserId) {
-      window.__convogramCallTarget = { conversationId, remoteUserId, remoteName };
-    }
+    if (!global && conversationId && remoteUserId) window.__convogramCallTarget = { conversationId, remoteUserId, remoteName };
   }, [conversationId, remoteUserId, remoteName, global]);
 
   useEffect(() => {
@@ -51,9 +48,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
     const startHandler = (e) => {
       const detail = e.detail || {};
       if (global) {
-        const target = detail.remoteUserId && detail.conversationId
-          ? { conversationId: detail.conversationId, remoteUserId: detail.remoteUserId, remoteName: detail.remoteName || "Contact" }
-          : window.__convogramCallTarget;
+        const target = detail.remoteUserId && detail.conversationId ? { conversationId: detail.conversationId, remoteUserId: detail.remoteUserId, remoteName: detail.remoteName || "Contact" } : window.__convogramCallTarget;
         if (callRef.current || !target?.remoteUserId || !target?.conversationId) return;
         startCall(detail.type || "voice", target.remoteUserId, target.remoteName || "Contact", target.conversationId);
       } else {
@@ -84,27 +79,19 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
 
   function createPeer(callId, type, peerId) {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    pc.onicecandidate = (event) => {
-      if (event.candidate) signal({ kind: "ice", callId, candidate: event.candidate }, peerId);
-    };
+    pc.onicecandidate = (event) => { if (event.candidate) signal({ kind: "ice", callId, candidate: event.candidate }, peerId); };
     pc.ontrack = (event) => {
       if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream();
-      (event.streams?.[0]?.getTracks() || [event.track]).forEach((track) => {
-        if (!remoteStreamRef.current.getTracks().some((t) => t.id === track.id)) remoteStreamRef.current.addTrack(track);
-      });
+      (event.streams?.[0]?.getTracks() || [event.track]).forEach((track) => { if (!remoteStreamRef.current.getTracks().some((t) => t.id === track.id)) remoteStreamRef.current.addTrack(track); });
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current;
     };
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed") setError("The call connection failed.");
-    };
+    pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") setError("The call connection failed."); };
     pcRef.current = pc;
     return pc;
   }
 
   async function getLocalMedia(type) {
-    const constraints = type === "video"
-      ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } }
-      : { audio: true };
+    const constraints = type === "video" ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } } : { audio: true };
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
     if (localVideoRef.current) localVideoRef.current.srcObject = stream;
@@ -125,6 +112,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
       targetRef.current = { conversationId: targetConversationId, remoteUserId: peerId, remoteName: peerName };
       setCall({ callId, type, status: "calling", remoteName: peerName, remoteUserId: peerId, conversationId: targetConversationId });
       await signal({ kind: "offer", callId, type, offer, conversationId: targetConversationId, remoteName: peerName }, peerId);
+      supabase.functions.invoke("push-call", { body: { toUserId: peerId, callId, type, conversationId: targetConversationId, callerName: peerName } }).catch(() => {});
     } catch (err) {
       cleanup(false);
       setError(err.name === "NotAllowedError" ? "Microphone/camera permission was denied." : err.message || "Could not start the call.");
@@ -134,11 +122,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
   async function handleSignal(payload) {
     if (payload.kind === "offer") {
       if (callRef.current?.callId && callRef.current.callId !== payload.callId) return;
-      setIncoming((current) => current?.callId === payload.callId ? current : {
-        ...payload,
-        fromUserId: payload.senderId,
-        remoteName: payload.remoteName || "Contact",
-      });
+      setIncoming((current) => current?.callId === payload.callId ? current : { ...payload, fromUserId: payload.senderId, remoteName: payload.remoteName || "Contact" });
       return;
     }
     if (payload.kind === "answer") {
@@ -150,8 +134,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
     }
     if (payload.kind === "ice") {
       if (!callRef.current || callRef.current.callId !== payload.callId || !pcRef.current) return;
-      if (pcRef.current.remoteDescription) await pcRef.current.addIceCandidate(payload.candidate);
-      else pendingIceRef.current.push(payload.candidate);
+      if (pcRef.current.remoteDescription) await pcRef.current.addIceCandidate(payload.candidate); else pendingIceRef.current.push(payload.candidate);
       return;
     }
     if (payload.kind === "hangup") {
@@ -163,9 +146,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
     const pc = pcRef.current;
     if (!pc?.remoteDescription) return;
     const queued = pendingIceRef.current.splice(0);
-    for (const candidate of queued) {
-      try { await pc.addIceCandidate(candidate); } catch (_) {}
-    }
+    for (const candidate of queued) try { await pc.addIceCandidate(candidate); } catch (_) {}
   }
 
   async function acceptIncoming() {
@@ -229,26 +210,9 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
 
   if (!global && !conversationId) return null;
   const displayName = call?.remoteName || incoming?.remoteName || remoteName;
-
   return <>{(call || incoming) && <div className="call-layer">
-    {incoming && !call && <div className="incoming-call-card">
-      <div className="incoming-call-icon">{incoming.type === "video" ? <Video size={28} /> : <Phone size={28} />}</div>
-      <span>Incoming {incoming.type === "video" ? "video" : "voice"} call</span>
-      <strong>{displayName}</strong>
-      <div className="incoming-call-actions">
-        <button className="call-decline" onClick={declineIncoming}><PhoneOff size={20} />Decline</button>
-        <button className="call-accept" onClick={acceptIncoming}>{incoming.type === "video" ? <Video size={20} /> : <Phone size={20} />}Answer</button>
-      </div>
-    </div>}
-    {call && <div className={`active-call ${call.type === "video" ? "video-call" : "voice-call"}`}>
-      {call.type === "video" ? <><video ref={remoteVideoRef} className="call-remote-video" autoPlay playsInline /><video ref={localVideoRef} className="call-local-video" autoPlay muted playsInline /></> : <div className="voice-call-stage"><div className="call-avatar">{displayName.slice(0, 1).toUpperCase()}</div><strong>{displayName}</strong><span>{call.status === "calling" ? "Calling…" : "Connected"}</span><Volume2 size={18} /></div>}
-      <div className="call-status-pill">{call.status === "calling" ? "Calling…" : "Connected"}</div>
-      <div className="call-controls">
-        <button className={muted ? "control-active" : ""} onClick={toggleMute}>{muted ? <MicOff /> : <Mic />}<small>{muted ? "Unmute" : "Mute"}</small></button>
-        {call.type === "video" && <button className={cameraOff ? "control-active" : ""} onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}<small>{cameraOff ? "Camera" : "Video"}</small></button>}
-        <button className="call-end" onClick={hangup}><PhoneOff /><small>End</small></button>
-      </div>
-    </div>}
+    {incoming && !call && <div className="incoming-call-card"><div className="incoming-call-icon">{incoming.type === "video" ? <Video size={28} /> : <Phone size={28} />}</div><span>Incoming {incoming.type === "video" ? "video" : "voice"} call</span><strong>{displayName}</strong><div className="incoming-call-actions"><button className="call-decline" onClick={declineIncoming}><PhoneOff size={20} />Decline</button><button className="call-accept" onClick={acceptIncoming}>{incoming.type === "video" ? <Video size={20} /> : <Phone size={20} />}Answer</button></div></div>}
+    {call && <div className={`active-call ${call.type === "video" ? "video-call" : "voice-call"}`}>{call.type === "video" ? <><video ref={remoteVideoRef} className="call-remote-video" autoPlay playsInline /><video ref={localVideoRef} className="call-local-video" autoPlay muted playsInline /></> : <div className="voice-call-stage"><div className="call-avatar">{displayName.slice(0, 1).toUpperCase()}</div><strong>{displayName}</strong><span>{call.status === "calling" ? "Calling…" : "Connected"}</span><Volume2 size={18} /></div>}<div className="call-status-pill">{call.status === "calling" ? "Calling…" : "Connected"}</div><div className="call-controls"><button className={muted ? "control-active" : ""} onClick={toggleMute}>{muted ? <MicOff /> : <Mic />}<small>{muted ? "Unmute" : "Mute"}</small></button>{call.type === "video" && <button className={cameraOff ? "control-active" : ""} onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}<small>{cameraOff ? "Camera" : "Video"}</small></button>}<button className="call-end" onClick={hangup}><PhoneOff /><small>End</small></button></div></div>}
     {error && <div className="call-error">{error}</div>}
   </div>}{error && !call && !incoming && <div className="call-toast" onClick={() => setError("")}>{error}</div>}</>;
 }
@@ -261,7 +225,11 @@ if (typeof window !== "undefined" && !window.__convogramGlobalCalls) {
   const root = createRoot(host);
   const renderGlobal = async () => {
     const { data } = await supabase.auth.getSession();
-    root.render(data.session?.user?.id ? <CallOverlay global userId={data.session.user.id} /> : null);
+    const userId = data.session?.user?.id;
+    if (userId) {
+      root.render(<CallOverlay global userId={userId} />);
+      registerCallPush(userId).catch(() => {});
+    } else root.render(null);
   };
   renderGlobal();
   supabase.auth.onAuthStateChange(() => renderGlobal());
