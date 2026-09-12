@@ -1,21 +1,19 @@
 import { supabase } from "./supabase";
 
-const SHORT_SELECT = `*, profiles:user_id(id, username, display_name, avatar_url, is_private), short_likes(count), short_comments(count)`;
-
 export async function getShortsForDiscover(limit = 30, offset = 0) {
-  const { data, error } = await supabase.from("shorts").select(SHORT_SELECT).order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+  const { data, error } = await supabase.from("shorts").select(`*, profiles:user_id(id, username, display_name, avatar_url, is_private), short_likes(count), short_comments(count)`).order("created_at", { ascending: false }).range(offset, offset + limit - 1);
   if (error) throw error;
   return data || [];
 }
 
 export async function getUserShorts(userId) {
-  const { data, error } = await supabase.from("shorts").select(SHORT_SELECT).eq("user_id", userId).order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("shorts").select(`*, profiles:user_id(id, username, display_name, avatar_url), short_likes(count), short_comments(count)`).eq("user_id", userId).order("created_at", { ascending: false });
   if (error) throw error;
   return data || [];
 }
 
-export async function createShort(userId, mediaUrl, caption = null, soundName = null) {
-  const { data, error } = await supabase.from("shorts").insert([{ user_id: userId, media_url: mediaUrl, media_type: "video", caption: caption || null, sound_name: soundName || null }]).select(SHORT_SELECT).single();
+export async function createShort(userId, videoUrl, caption = null, soundName = null) {
+  const { data, error } = await supabase.from("shorts").insert([{ user_id: userId, media_url: videoUrl, media_type: "video", caption: caption || null, sound_name: soundName || null }]).select().single();
   if (error) throw error;
   return data;
 }
