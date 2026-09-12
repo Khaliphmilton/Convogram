@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ImagePlus, MessageCircle, Plus, Search, Send, Users, X, Smile, Mic, Square, Reply, Trash2 } from "lucide-react";
+import { Check, ChevronLeft, ImagePlus, MessageCircle, Plus, Search, Send, Users, X, Smile, Mic, Square, Reply, Trash2, Play, Pause } from "lucide-react";
 import { getConversations, getConversationDetails, getMessages, sendMessage, createConversation, subscribeToConversation, markMessageAsRead, addMessageReaction, removeMessageReaction, deleteMessage, consumePendingDirectConversationId } from "../lib/messages";
 import { uploadMessageMedia, uploadVoiceMessage } from "../lib/storage";
 import { supabase } from "../lib/supabase";
@@ -7,6 +7,76 @@ import "./MessagesPanel.css";
 
 const REACTIONS = ["❤️", "😂", "👍", "🔥", "😮", "😢"];
 const LONG_PRESS_MS = 550;
+
+function VoiceNote({ src }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+    const onLoaded = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+    const onTime = () => setCurrent(audio.currentTime || 0);
+    const onEnded = () => { setPlaying(false); setCurrent(0); };
+    audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnded);
+    return () => {
+      audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.load();
+  }, [src]);
+
+  async function togglePlayback() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      try {
+        await audio.play();
+        setPlaying(true);
+      } catch (_) {}
+    } else {
+      audio.pause();
+      setPlaying(false);
+    }
+  }
+
+  function formatTime(value) {
+    if (!Number.isFinite(value) || value < 0) return "0:00";
+    const seconds = Math.floor(value);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+
+  const progress = duration ? Math.min(100, Math.max(0, (current / duration) * 100)) : 0;
+  const bars = [4,7,10,6,12,8,15,9,13,6,11,16,8,13,7,12,9,15,6,11,8,14,10,7,12,5,9,13,7,11];
+
+  return <div className="voice-note" onClick={e => e.stopPropagation()}>
+    <audio ref={audioRef} src={src} preload="metadata" />
+    <button type="button" className="voice-note-play" onClick={togglePlayback} aria-label={playing ? "Pause voice note" : "Play voice note"}>
+      {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+    </button>
+    <div className="voice-note-main">
+      <button type="button" className="voice-note-track" onClick={() => {
+        const audio = audioRef.current;
+        if (!audio || !duration) return;
+        const rect = audio.currentTarget?.getBoundingClientRect?.();
+      }} aria-label="Voice note progress">
+        <span className="voice-note-wave" aria-hidden="true">
+          {bars.map((height, index) => <i key={index} style={{ height: `${height}px` }} className={index / bars.length * 100 <= progress ? "played" : ""} />)}
+        </span>
+        <span className="voice-note-progress" style={{ width: `${progress}%` }} />
+      </button>
+      <div className="voice-note-meta"><span>{playing ? formatTime(current) : formatTime(duration)}</span></div>
+    </div>
+  </div>;
+}
 
 export function MessagesPanel({ userId, initialConversationId = null, onBack }) {
   const [conversations, setConversations] = useState([]);
@@ -280,7 +350,7 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
             return <div key={item.id} className={`message-row ${mine ? "mine" : "theirs"}`}>
               <div className={`message-bubble ${reactionsOpen ? "reaction-active" : ""}`} onPointerDown={() => startLongPress(item.id)} onPointerUp={cancelLongPress} onPointerCancel={cancelLongPress} onPointerLeave={cancelLongPress} onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }} onClick={e => e.stopPropagation()}>
                 {quoted && <div className="message-reply-preview"><div className="reply-preview-label"><Reply size={11} /> Replying to {senderName(quoted)}</div><div className="reply-preview-text">{replyText(quoted)}</div></div>}
-                {item.is_deleted ? <em>Message deleted</em> : media && item.media_url ? (item.message_type === "image" ? <img src={item.media_url} alt="Shared media" className="message-media" /> : item.message_type === "video" ? <video src={item.media_url} className="message-media" controls preload="metadata" /> : <audio src={item.media_url} controls className="message-audio" />) : <span className="message-text">{item.content || "Attachment"}</span>}
+                {item.is_deleted ? <em>Message deleted</em> : media && item.media_url ? (item.message_type === "image" ? <img src={item.media_url} alt="Shared media" className="message-media" /> : item.message_type === "video" ? <video src={item.media_url} className="message-media" controls preload="metadata" /> : <VoiceNote src={item.media_url} />) : <span className="message-text">{item.content || "Attachment"}</span>}
                 {reactionsOpen && !item.is_deleted && <div className="message-actions" onClick={e => e.stopPropagation()}><div className="reaction-picker" aria-label="Message reactions">{REACTIONS.map(r => <button key={r} type="button" aria-label={`React ${r}`} onClick={() => toggleReaction(item, r)}>{r}</button>)}</div><div className="message-tools"><button type="button" onClick={() => { setReplyingTo(item); setReactionMessageId(null); }} title="Reply"><Reply size={13} /></button>{mine && <button type="button" onClick={() => handleDelete(item)} title="Delete"><Trash2 size={13} /></button>}</div></div>}
                 {reactions.length > 0 && <div className="message-reactions">{[...new Set(reactions.map(r => r.reaction))].map(r => <button key={r} type="button" onClick={() => toggleReaction(item, r)}>{r} {reactions.filter(x => x.reaction === r).length}</button>)}</div>}
                 <small>{new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{mine && <Check size={12} />}</small>
