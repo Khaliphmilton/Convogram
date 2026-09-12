@@ -22,6 +22,7 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
   const feedRef = useRef(null);
   const videoRefs = useRef(new Map());
   const swipeStartRef = useRef(null);
+  const profileHistoryRef = useRef(false);
 
   useEffect(() => {
     setItems(shorts);
@@ -50,6 +51,17 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
     videoRefs.current.forEach((video) => { if (video) video.muted = muted; });
   }, [muted]);
 
+  useEffect(() => {
+    function handlePopState() {
+      if (profileHistoryRef.current) {
+        profileHistoryRef.current = false;
+        setCreatorProfile(null);
+      }
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   async function toggleLike(item) {
     if (item.liked) await unlikeShort(item.id, userId); else await likeShort(item.id, userId);
     setItems((prev) => prev.map((s) => s.id === item.id ? { ...s, liked: !s.liked, short_likes: [{ count: Math.max(0, (s.short_likes?.[0]?.count || 0) + (s.liked ? -1 : 1)) }] } : s));
@@ -71,9 +83,19 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
     const creatorId = creator.id || short.user_id || short.creator_id;
     if (!creatorId) return;
     const nextProfile = { ...creator, id: creatorId };
-    // Keep the profile inside the Shorts screen so the local Back button
-    // returns directly to the exact Shorts feed instead of navigating away.
+    // Add one browser-history entry so the Android/phone Back button behaves
+    // exactly like the in-app Back button and returns to the Shorts feed.
+    window.history.pushState({ convogramShortsProfile: true }, "", window.location.href);
+    profileHistoryRef.current = true;
     setCreatorProfile(nextProfile);
+  }
+
+  function closeCreatorProfile() {
+    if (profileHistoryRef.current) {
+      window.history.back();
+    } else {
+      setCreatorProfile(null);
+    }
   }
 
   function handleTouchStart(event, short) {
@@ -94,7 +116,7 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
 
   if (creatorProfile) {
     return <div className="shorts-creator-profile-view">
-      <div className="shorts-creator-profile-bar"><button onClick={() => setCreatorProfile(null)} aria-label="Back to Shorts"><ArrowLeft size={21} /></button><strong>@{creatorProfile.username || "creator"}</strong></div>
+      <div className="shorts-creator-profile-bar"><button onClick={closeCreatorProfile} aria-label="Back to Shorts"><ArrowLeft size={21} /></button><strong>@{creatorProfile.username || "creator"}</strong></div>
       <ProfilePanel profile={creatorProfile} stats={{ postsCount: 0, followersCount: 0, followingCount: 0 }} userId={userId} initialTab="posts" onPeople={() => {}} onMessage={() => {}} />
     </div>;
   }
