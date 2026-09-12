@@ -4,192 +4,37 @@ import { followUser, unfollowUser, isFollowing, getFollowers, getFollowing } fro
 import { getSavedPosts, getLikedPosts, getTaggedPosts, getSavedPostIds, savePost, unsavePost, updateProfile } from "../lib/profile_features";
 import { supabase } from "../lib/supabase";
 
-const tabs = [
-  { id: "posts", label: "Posts", icon: Grid3X3 },
-  { id: "shorts", label: "Shorts", icon: PlaySquare },
-  { id: "saved", label: "Saved", icon: Bookmark },
-  { id: "liked", label: "Liked", icon: Heart },
-  { id: "tagged", label: "Tagged", icon: Tag },
-];
+const tabs=[{id:"posts",label:"Posts",icon:Grid3X3},{id:"shorts",label:"Shorts",icon:PlaySquare},{id:"saved",label:"Saved",icon:Bookmark},{id:"liked",label:"Liked",icon:Heart},{id:"tagged",label:"Tagged",icon:Tag}];
 
-export function ProfilePanel({ profile, stats, posts = [], userId, onCreatePost, onCreateMoment, onMessage, onLogout, onProfileUpdated }) {
-  const [active, setActive] = useState("posts");
-  const [following, setFollowing] = useState(false);
-  const [savedIds, setSavedIds] = useState(new Set());
-  const [savedPosts, setSavedPosts] = useState([]);
-  const [likedPosts, setLikedPosts] = useState([]);
-  const [taggedPosts, setTaggedPosts] = useState([]);
-  const [people, setPeople] = useState([]);
-  const [peopleMode, setPeopleMode] = useState("");
-  const [editOpen, setEditOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [avatarSaving, setAvatarSaving] = useState(false);
-  const avatarInputRef = useRef(null);
-  const [edit, setEdit] = useState({ display_name: profile?.display_name || "", username: profile?.username || "", bio: profile?.bio || "", website: profile?.website || "", is_private: !!profile?.is_private });
-
-  const ownPosts = useMemo(() => posts.filter((post) => post.user_id === profile?.id), [posts, profile?.id]);
-  const mediaPosts = ownPosts.filter((post) => post.media_url);
-  const displayPosts = active === "posts" ? ownPosts : active === "shorts" ? mediaPosts : active === "saved" ? savedPosts : active === "liked" ? likedPosts : taggedPosts;
-  const likesCount = ownPosts.reduce((n, p) => n + (p.likes?.[0]?.count || 0), 0);
-  const isOwnProfile = userId === profile?.id;
-
-  function toast(text) {
-    setNotice(text);
-    window.clearTimeout(window.__cvProfileToast);
-    window.__cvProfileToast = window.setTimeout(() => setNotice(""), 2400);
-  }
-
-  useEffect(() => {
-    if (!userId || !profile?.id) return;
-    (async () => {
-      try {
-        setFollowing(await isFollowing(userId, profile.id));
-        setSavedIds(new Set(await getSavedPostIds(userId)));
-      } catch (err) { toast(err.message || "Unable to load profile state."); }
-    })();
-  }, [userId, profile?.id]);
-
-  useEffect(() => {
-    if (!userId) return;
-    (async () => {
-      try {
-        if (active === "saved") setSavedPosts(await getSavedPosts(userId));
-        if (active === "liked") setLikedPosts(await getLikedPosts(userId));
-        if (active === "tagged") setTaggedPosts(await getTaggedPosts(userId));
-      } catch (err) { toast(err.message || "Unable to load this profile section."); }
-    })();
-  }, [active, userId]);
-
-  useEffect(() => {
-    if (profile) setEdit({ display_name: profile.display_name || "", username: profile.username || "", bio: profile.bio || "", website: profile.website || "", is_private: !!profile.is_private });
-  }, [profile]);
-
-  async function toggleFollow() {
-    if (!userId || userId === profile?.id) return;
-    try {
-      if (following) { await unfollowUser(userId, profile.id); setFollowing(false); toast("Unfollowed"); }
-      else { await followUser(userId, profile.id); setFollowing(true); toast("Following"); }
-    } catch (err) { toast(err.message || "Follow action failed."); }
-  }
-
-  async function changeAvatar(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !userId || !isOwnProfile) return;
-    if (!file.type.startsWith("image/")) { toast("Choose an image for your profile photo."); return; }
-    if (file.size > 5 * 1024 * 1024) { toast("Profile photos must be 5 MB or smaller."); return; }
-    setAvatarSaving(true);
-    try {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-      const path = `${userId}/avatar-${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
-      if (uploadError) throw uploadError;
-      const { data: publicData } = supabase.storage.from("avatars").getPublicUrl(path);
-      if (!publicData?.publicUrl) throw new Error("Could not create the profile photo URL.");
-      const updated = await updateProfile(userId, { avatar_url: publicData.publicUrl });
-      onProfileUpdated?.(updated);
-      toast("Profile photo updated");
-    } catch (err) {
-      toast(err.message || "Could not update profile photo. Make sure the avatars storage bucket is configured.");
-    } finally { setAvatarSaving(false); }
-  }
-
-  async function toggleSave(postId) {
-    try {
-      if (savedIds.has(postId)) {
-        await unsavePost(userId, postId);
-        setSavedIds((prev) => new Set([...prev].filter((id) => id !== postId)));
-        setSavedPosts((prev) => prev.filter((p) => p.id !== postId));
-        toast("Removed from Saved");
-      } else {
-        await savePost(userId, postId);
-        setSavedIds((prev) => new Set(prev).add(postId));
-        toast("Saved");
-      }
-    } catch (err) { toast(err.message || "Could not update Saved."); }
-  }
-
-  async function openPeople(mode) {
-    try { setPeopleMode(mode); setPeople(mode === "followers" ? await getFollowers(profile.id) : await getFollowing(profile.id)); }
-    catch (err) { toast(err.message || "Could not load people."); }
-  }
-
-  async function saveProfile(e) {
-    e.preventDefault(); setSaving(true);
-    try { const updated = await updateProfile(userId, edit); onProfileUpdated?.(updated); setEditOpen(false); toast("Profile updated"); }
-    catch (err) { toast(err.message || "Profile update failed."); }
-    finally { setSaving(false); }
-  }
-
-  return <section className="profile-pro">
-    <div className="profile-pro-cover" />
-    <div className="profile-pro-body">
-      <div className="profile-pro-head">
-        <div className="profile-pro-avatar-wrap">
-          {profile?.avatar_url ? <img className="profile-pro-avatar" src={profile.avatar_url} alt="Profile" /> : <div className="profile-pro-avatar">{(profile?.display_name || profile?.username || "C").charAt(0).toUpperCase()}</div>}
-          {isOwnProfile && <button className="profile-avatar-edit" type="button" onClick={() => avatarInputRef.current?.click()} aria-label="Change profile photo" title="Change profile photo" disabled={avatarSaving}><Camera size={16} />{avatarSaving && <span className="profile-avatar-spinner" />}</button>}
-          <input ref={avatarInputRef} className="profile-avatar-input" type="file" accept="image/*" onChange={changeAvatar} />
-          <span className="profile-online" />
-        </div>
-        <div className="profile-pro-identity">
-          <div className="profile-name-row"><h1>{profile?.display_name || "Convogram User"}</h1><span className="verified-badge"><Check size={14} strokeWidth={3} /></span></div>
-          <p className="profile-handle">@{profile?.username || "user"}</p>
-          <p className="profile-bio-pro">{profile?.bio || "Creating moments, sharing ideas and connecting with my people on Convogram."}</p>
-          <div className="profile-meta"><span><Link2 size={14} /> {profile?.website || `convogram.social/${profile?.username || "user"}`}</span><span><Sparkles size={14} /> Creator</span></div>
-        </div>
-        <div className="profile-pro-menu">
-          {isOwnProfile && <button onClick={() => setEditOpen(true)} aria-label="Edit profile" title="Edit profile"><Settings size={19} /></button>}
-          <button onClick={() => setMoreOpen(true)} aria-label="Profile options" title="Profile options"><MoreHorizontal size={20} /></button>
-        </div>
-      </div>
-
-      <div className="profile-stat-row">
-        <button onClick={() => setActive("posts")}><strong>{stats?.postsCount || 0}</strong><span>Posts</span></button>
-        <button onClick={() => openPeople("followers")}><strong>{stats?.followersCount || 0}</strong><span>Followers</span></button>
-        <button onClick={() => openPeople("following")}><strong>{stats?.followingCount || 0}</strong><span>Following</span></button>
-        <button onClick={() => setActive("liked")}><strong>{likesCount}</strong><span>Likes</span></button>
-      </div>
-
-      <div className="profile-primary-actions">
-        {!isOwnProfile && <button className="profile-follow" onClick={toggleFollow}><UserPlus size={16} /> {following ? "Following" : "Follow"}</button>}
-        <button onClick={onMessage}><MessageCircle size={16} /> Message</button>
-        {isOwnProfile && <button onClick={onCreatePost}><Plus size={16} /> Post</button>}
-      </div>
-
-      <div className="profile-section-label"><span>Highlights</span><small>Stories & collections</small></div>
-      <div className="profile-highlights">
-        <button onClick={() => toast("Highlight creation ready for media selection")}><span className="highlight-circle add"><Plus size={22} /></span><small>New</small></button>
-        <button onClick={() => toast("Moments highlight opened")}><span className="highlight-circle"><Sparkles size={21} /></span><small>Moments</small></button>
-        <button onClick={() => toast("Creator highlight opened")}><span className="highlight-circle"><Camera size={21} /></span><small>Creator</small></button>
-        <button onClick={() => toast("Community highlight opened")}><span className="highlight-circle"><Users size={21} /></span><small>Community</small></button>
-      </div>
-
-      <div className="profile-section-label profile-content-label"><span>Content</span><small>Choose a section</small></div>
-      <div className="profile-tabs">
-        {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={active === id ? "active" : ""} onClick={() => setActive(id)}><Icon size={17} /><span>{label}</span></button>)}
-      </div>
-
-      <div className="profile-grid">
-        {displayPosts.length ? displayPosts.map((post) => <button className="profile-grid-item" key={post.id} onClick={() => toggleSave(post.id)} title={savedIds.has(post.id) ? "Remove from Saved" : "Save post"}>
-          {post.media_url ? (post.media_type === "video" ? <video src={post.media_url} muted playsInline /> : <img src={post.media_url} alt={post.caption || "Convogram post"} />) : <div className="grid-text-post"><p>{post.caption || "Convogram post"}</p></div>}
-          {savedIds.has(post.id) && <span className="grid-overlay"><Bookmark size={13} fill="currentColor" /></span>}
-        </button>) : <div className="profile-empty-grid"><Sparkles size={30} /><h2>{active === "posts" ? "Share your first post" : active === "shorts" ? "Your Shorts will appear here" : active === "saved" ? "Nothing saved yet" : active === "liked" ? "Nothing liked yet" : "No tagged posts yet"}</h2><p>{active === "saved" ? "Save posts from Convogram and they will stay here privately." : active === "liked" ? "Posts you like will be collected here." : active === "tagged" ? "Posts where you are tagged will appear here." : "Build your profile with photos and videos."}</p>{active === "posts" && <button onClick={onCreatePost}>Create post</button>}</div>}
-      </div>
-    </div>
-
-    {editOpen && <div className="cv-modal-backdrop" onClick={() => setEditOpen(false)}><div className="cv-modal light" onClick={(e) => e.stopPropagation()}><div className="cv-modal-head"><h2>Edit profile</h2><button className="cv-close" onClick={() => setEditOpen(false)}><X size={18} /></button></div><form className="cv-form" onSubmit={saveProfile}><label>Display name</label><input value={edit.display_name} onChange={(e) => setEdit({ ...edit, display_name: e.target.value })} required /><label>Username</label><input value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value.toLowerCase().replace(/\s/g, "") })} required /><label>Bio</label><textarea value={edit.bio} onChange={(e) => setEdit({ ...edit, bio: e.target.value })} maxLength={500} /><label>Website</label><input value={edit.website} onChange={(e) => setEdit({ ...edit, website: e.target.value })} placeholder="https://..." /><button className="cv-save" disabled={saving}>{saving ? "Saving..." : "Save changes"}</button></form></div></div>}
-
-    {peopleMode && <div className="cv-modal-backdrop" onClick={() => setPeopleMode("")}><div className="cv-modal" onClick={(e) => e.stopPropagation()}><div className="cv-modal-head"><h2>{peopleMode === "followers" ? "Followers" : "Following"}</h2><button className="cv-close" onClick={() => setPeopleMode("")}><X size={18} /></button></div><div className="cv-people">{people.length ? people.map((person) => <div className="cv-person" key={person.id}><div className="cv-person-avatar">{(person.display_name || person.username || "C").charAt(0).toUpperCase()}</div><div><strong>{person.display_name || person.username}</strong><small>@{person.username}</small></div></div>) : <p>No {peopleMode} yet.</p>}</div></div></div>}
-
-    {moreOpen && <div className="cv-modal-backdrop" onClick={() => setMoreOpen(false)}><div className="cv-modal light" onClick={(e) => e.stopPropagation()}><div className="cv-modal-head"><h2>Profile options</h2><button className="cv-close" onClick={() => setMoreOpen(false)}><X size={18} /></button></div><div className="cv-setting-list">
-      {isOwnProfile && <button className="cv-setting" onClick={() => { setMoreOpen(false); setEditOpen(true); }}><Settings size={19} /><span><strong>Edit profile</strong><small>Update your name, username and bio</small></span></button>}
-      {isOwnProfile && <button className="cv-setting" onClick={() => { setMoreOpen(false); avatarInputRef.current?.click(); }}><Camera size={19} /><span><strong>Change profile photo</strong><small>Choose a new picture for your profile</small></span></button>}
-      <button className="cv-setting" onClick={() => { setMoreOpen(false); navigator.clipboard?.writeText(`${window.location.origin}/profile/${profile?.username || "user"}`); toast("Profile link copied"); }}><Share2 size={19} /><span><strong>Share profile</strong><small>Copy your public profile link</small></span></button>
-      {!isOwnProfile && <button className="cv-setting" onClick={() => { setMoreOpen(false); toast("Profile options ready"); }}><MoreHorizontal size={19} /><span><strong>More</strong><small>Additional profile actions</small></span></button>}
-    </div></div></div>}
-
-    {notice && <div className="profile-toast">{notice}</div>}
-  </section>;
+export function ProfilePanel({profile,stats,posts=[],userId,onCreatePost,onCreateMoment,onMessage,onEdit,onProfileUpdated}){
+ const [active,setActive]=useState("posts"),[following,setFollowing]=useState(false),[savedIds,setSavedIds]=useState(new Set()),[savedPosts,setSavedPosts]=useState([]),[likedPosts,setLikedPosts]=useState([]),[taggedPosts,setTaggedPosts]=useState([]),[people,setPeople]=useState([]),[peopleMode,setPeopleMode]=useState(""),[moreOpen,setMoreOpen]=useState(false),[notice,setNotice]=useState(""),[avatarSaving,setAvatarSaving]=useState(false);
+ const avatarInputRef=useRef(null);
+ const ownPosts=useMemo(()=>posts.filter(post=>post.user_id===profile?.id),[posts,profile?.id]);
+ const mediaPosts=ownPosts.filter(post=>post.media_url);
+ const displayPosts=active==="posts"?ownPosts:active==="shorts"?mediaPosts:active==="saved"?savedPosts:active==="liked"?likedPosts:taggedPosts;
+ const likesCount=ownPosts.reduce((n,p)=>n+(p.likes?.[0]?.count||0),0);
+ const isOwnProfile=userId===profile?.id;
+ function toast(text){setNotice(text);window.clearTimeout(window.__cvProfileToast);window.__cvProfileToast=window.setTimeout(()=>setNotice(""),2400);}
+ useEffect(()=>{if(!userId||!profile?.id)return;(async()=>{try{setFollowing(await isFollowing(userId,profile.id));setSavedIds(new Set(await getSavedPostIds(userId)));}catch(err){toast(err.message||"Unable to load profile state.");}})();},[userId,profile?.id]);
+ useEffect(()=>{if(!userId)return;(async()=>{try{if(active==="saved")setSavedPosts(await getSavedPosts(userId));if(active==="liked")setLikedPosts(await getLikedPosts(userId));if(active==="tagged")setTaggedPosts(await getTaggedPosts(userId));}catch(err){toast(err.message||"Unable to load this profile section.");}})();},[active,userId]);
+ async function toggleFollow(){if(!userId||userId===profile?.id)return;try{if(following){await unfollowUser(userId,profile.id);setFollowing(false);toast("Unfollowed");}else{await followUser(userId,profile.id);setFollowing(true);toast("Following");}}catch(err){toast(err.message||"Follow action failed.");}}
+ async function changeAvatar(e){const file=e.target.files?.[0];e.target.value="";if(!file||!userId||!isOwnProfile)return;if(!file.type.startsWith("image/"))return toast("Choose an image for your profile photo.");if(file.size>5*1024*1024)return toast("Profile photos must be 5 MB or smaller.");setAvatarSaving(true);try{const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";const path=`${userId}/avatar-${Date.now()}.${ext}`;const {error}=await supabase.storage.from("avatars").upload(path,file,{upsert:true,contentType:file.type,cacheControl:"3600"});if(error)throw error;const {data}=supabase.storage.from("avatars").getPublicUrl(path);const updated=await updateProfile(userId,{avatar_url:data.publicUrl});onProfileUpdated?.(updated);toast("Profile photo updated");}catch(err){toast(err.message||"Could not update profile photo.");}finally{setAvatarSaving(false);}}
+ async function toggleSave(postId){try{if(savedIds.has(postId)){await unsavePost(userId,postId);setSavedIds(prev=>new Set([...prev].filter(id=>id!==postId)));setSavedPosts(prev=>prev.filter(p=>p.id!==postId));toast("Removed from Saved");}else{await savePost(userId,postId);setSavedIds(prev=>new Set(prev).add(postId));toast("Saved");}}catch(err){toast(err.message||"Could not update Saved.");}}
+ async function openPeople(mode){try{setPeopleMode(mode);setPeople(mode==="followers"?await getFollowers(profile.id):await getFollowing(profile.id));}catch(err){toast(err.message||"Could not load people.");}}
+ return <section className="profile-pro"><div className="profile-pro-body">
+   <div className="profile-pro-head">
+    <div className="profile-pro-avatar-wrap">{profile?.avatar_url?<img className="profile-pro-avatar" src={profile.avatar_url} alt="Profile"/>:<div className="profile-pro-avatar">{(profile?.display_name||profile?.username||"C").charAt(0).toUpperCase()}</div>}{isOwnProfile&&<button className="profile-avatar-edit" type="button" onClick={()=>avatarInputRef.current?.click()} aria-label="Change profile photo" disabled={avatarSaving}><Camera size={16}/></button>}<input ref={avatarInputRef} className="profile-avatar-input" type="file" accept="image/*" onChange={changeAvatar}/><span className="profile-online"/></div>
+    <div className="profile-pro-identity"><div className="profile-name-row"><h1>{profile?.display_name||"Convogram User"}</h1><span className="verified-badge"><Check size={14} strokeWidth={3}/></span></div><p className="profile-handle">@{profile?.username||"user"}</p><p className="profile-bio-pro">{profile?.bio||"Creating moments, sharing ideas and connecting with my people on Convogram."}</p><div className="profile-meta"><span><Link2 size={14}/>{profile?.website||`convogram.social/${profile?.username||"user"}`}</span><span><Sparkles size={14}/>Creator</span></div></div>
+    <div className="profile-pro-menu">{isOwnProfile&&<button onClick={onEdit} aria-label="Edit profile" title="Edit profile"><Settings size={19}/></button>}<button onClick={()=>setMoreOpen(true)} aria-label="Profile options" title="Profile options"><MoreHorizontal size={20}/></button></div>
+   </div>
+   <div className="profile-stat-row"><button onClick={()=>setActive("posts")}><strong>{stats?.postsCount||0}</strong><span>Posts</span></button><button onClick={()=>openPeople("followers")}><strong>{stats?.followersCount||0}</strong><span>Followers</span></button><button onClick={()=>openPeople("following")}><strong>{stats?.followingCount||0}</strong><span>Following</span></button><button onClick={()=>setActive("liked")}><strong>{likesCount}</strong><span>Likes</span></button></div>
+   <div className="profile-primary-actions">{!isOwnProfile&&<button className="profile-follow" onClick={toggleFollow}><UserPlus size={16}/>{following?"Following":"Follow"}</button>}<button onClick={onMessage}><MessageCircle size={16}/>Message</button>{isOwnProfile&&<button onClick={onCreatePost}><Plus size={16}/>Post</button>}</div>
+   <div className="profile-section-label"><span>Highlights</span><small>Stories & collections</small></div><div className="profile-highlights"><button onClick={()=>toast("Highlight creation ready for media selection")}><span className="highlight-circle add"><Plus size={22}/></span><small>New</small></button><button onClick={()=>toast("Moments highlight opened")}><span className="highlight-circle"><Sparkles size={21}/></span><small>Moments</small></button><button onClick={()=>toast("Creator highlight opened")}><span className="highlight-circle"><Camera size={21}/></span><small>Creator</small></button><button onClick={()=>toast("Community highlight opened")}><span className="highlight-circle"><Users size={21}/></span><small>Community</small></button></div>
+   <div className="profile-section-label profile-content-label"><span>Content</span><small>Choose a section</small></div><div className="profile-tabs">{tabs.map(({id,label,icon:Icon})=><button key={id} className={active===id?"active":""} onClick={()=>setActive(id)}><Icon size={17}/><span>{label}</span></button>)}</div>
+   <div className="profile-grid">{displayPosts.length?displayPosts.map(post=><button className="profile-grid-item" key={post.id} onClick={()=>toggleSave(post.id)} title={savedIds.has(post.id)?"Remove from Saved":"Save post"}>{post.media_url?(post.media_type==="video"?<video src={post.media_url} muted playsInline/>:<img src={post.media_url} alt={post.caption||"Convogram post"}/>):<div className="grid-text-post"><p>{post.caption||"Convogram post"}</p></div>}{savedIds.has(post.id)&&<span className="grid-overlay"><Bookmark size={13} fill="currentColor"/></span>}</button>):<div className="profile-empty-grid"><Sparkles size={30}/><h2>{active==="posts"?"Share your first post":active==="shorts"?"Your Shorts will appear here":active==="saved"?"Nothing saved yet":active==="liked"?"Nothing liked yet":"No tagged posts yet"}</h2><p>{active==="saved"?"Save posts from Convogram and they will stay here privately.":active==="liked"?"Posts you like will be collected here.":active==="tagged"?"Posts where you are tagged will appear here.":"Build your profile with photos and videos."}</p>{active==="posts"&&<button onClick={onCreatePost}>Create post</button>}</div>}</div>
+  </div>
+  {peopleMode&&<div className="cv-modal-backdrop" onClick={()=>setPeopleMode("")}><div className="cv-modal" onClick={e=>e.stopPropagation()}><div className="cv-modal-head"><h2>{peopleMode==="followers"?"Followers":"Following"}</h2><button className="cv-close" onClick={()=>setPeopleMode("")}><X size={18}/></button></div><div className="cv-people">{people.length?people.map(person=><div className="cv-person" key={person.id}><div className="cv-person-avatar">{(person.display_name||person.username||"C").charAt(0).toUpperCase()}</div><div><strong>{person.display_name||person.username}</strong><small>@{person.username}</small></div></div>):<p>No {peopleMode} yet.</p>}</div></div></div>}
+  {moreOpen&&<div className="cv-modal-backdrop" onClick={()=>setMoreOpen(false)}><div className="cv-modal light" onClick={e=>e.stopPropagation()}><div className="cv-modal-head"><h2>Profile options</h2><button className="cv-close" onClick={()=>setMoreOpen(false)}><X size={18}/></button></div><div className="cv-setting-list">{isOwnProfile&&<button className="cv-setting" onClick={()=>{setMoreOpen(false);onEdit?.();}}><Settings size={19}/><span><strong>Edit profile</strong><small>Open the dedicated profile editor</small></span></button>}{isOwnProfile&&<button className="cv-setting" onClick={()=>{setMoreOpen(false);avatarInputRef.current?.click();}}><Camera size={19}/><span><strong>Change profile photo</strong><small>Choose a new picture for your profile</small></span></button>}<button className="cv-setting" onClick={()=>{setMoreOpen(false);navigator.clipboard?.writeText(`${window.location.origin}/profile/${profile?.username||"user"}`);toast("Profile link copied");}}><Share2 size={19}/><span><strong>Share profile</strong><small>Copy your public profile link</small></span></button>{!isOwnProfile&&<button className="cv-setting" onClick={()=>{setMoreOpen(false);toast("Profile options ready");}}><MoreHorizontal size={19}/><span><strong>More</strong><small>Additional profile actions</small></span></button>}</div></div></div>}
+  {notice&&<div className="profile-toast">{notice}</div>}
+ </section>;
 }
