@@ -52,3 +52,30 @@ export async function markConversationAsRead(conversationId, userId) { if (!conv
 export async function addMessageReaction(messageId, userId, reaction) { const { data, error } = await supabase.from("message_reactions").insert([{ message_id: messageId, user_id: userId, reaction }]).select().single(); if (error) throw error; return data; }
 export async function removeMessageReaction(messageId, userId, reaction) { const { error } = await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", userId).eq("reaction", reaction); if (error) throw error; }
 export async function createConversation(createdBy, type = "direct", name = null, avatarUrl = null, memberIds = []) { if (!createdBy) throw new Error("You must be signed in to create a conversation."); const allMembers = [...new Set([createdBy, ...memberIds].filter(Boolean))]; if (type === "direct" && allMembers.length !== 2) throw new Error("A direct conversation needs exactly two people."); const { data, error } = await supabase.from("conversations").insert([{ created_by: createdBy, type, name: name || null, avatar_url: avatarUrl || null }]).select().single(); if (error) throw error; const { error: memberError } = await supabase.from("conversation_members").insert(allMembers.map(userId => ({ conversation_id: data.id, user_id: userId, role: userId === createdBy ? "owner" : "member" }))); if (memberError) { try { await supabase.from("conversations").delete().eq("id", data.id); } catch {} throw memberError; } if (type === "direct") rememberChat(data.id); return data; }
+
+/* Keep the global Messages navigation badge live even while the user is on another page. */
+function installUnreadMessageIndicator() {
+  if (typeof window === "undefined" || !supabase) return () => {};
+  let timer = null;
+  let observer = null;
+  let userId = null;
+  const badgeClass = "convogram-unread-message-badge";
+  const paint = async () => {
+    if (!userId) return;
+    try {
+      const conversations = await getConversations(userId);
+      const total = conversations.reduce((sum, item) => sum + (item.unread_count || 0), 0);
+      document.querySelectorAll(".convogram-unread-message-badge").forEach(node => node.remove());
+      const navButtons = [...document.querySelectorAll("button")].filter(button => button.textContent?.trim().startsWith("Messages"));
+      navButtons.forEach(button => {
+        if (total <= 0) return;
+        const badge = document.createElement("span"); badge.className = badgeClass; badge.textContent = total > 99 ? "99+" : String(total); badge.setAttribute("aria-label", `${total} unread messages`); button.appendChild(badge);
+      });
+    } catch (_) {}
+  };
+  const start = async () => { const { data } = await supabase.auth.getSession(); userId = data?.session?.user?.id || null; await paint(); if (timer) clearInterval(timer); timer = setInterval(paint, 5000); observer = new MutationObserver(() => { if (!document.querySelector(".convogram-unread-message-badge")) paint(); }); observer.observe(document.body, { childList: true, subtree: true }); };
+  start();
+  const auth = supabase.auth.onAuthStateChange((_event, session) => { userId = session?.user?.id || null; paint(); });
+  return () => { if (timer) clearInterval(timer); observer?.disconnect(); auth.data?.subscription?.unsubscribe(); };
+}
+if (typeof window !== "undefined") installUnreadMessageIndicator();
