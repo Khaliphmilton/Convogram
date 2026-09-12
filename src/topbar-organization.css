@@ -15,6 +15,19 @@
   border-radius:10px;
 }
 .brand-button:hover{background:#111}
+.brand-button .brand-mark.small{
+  width:38px;
+  height:38px;
+  min-width:38px;
+  flex:0 0 38px;
+  padding:0;
+  border-radius:10px;
+  font-size:0;
+  line-height:0;
+  background:#071426 url('/convogram-icon.svg') center/100% 100% no-repeat;
+  color:transparent;
+  box-shadow:0 5px 16px rgba(0,0,0,.16);
+}
 .top-search{
   width:100%;
   margin:0;
@@ -68,6 +81,13 @@
   }
   .brand-button{gap:8px;padding:5px 2px}
   .brand-button b{font-size:16px}
+  .brand-button .brand-mark.small{
+    width:34px;
+    height:34px;
+    min-width:34px;
+    flex-basis:34px;
+    border-radius:9px;
+  }
   .top-search{display:none}
   .top-actions{margin-left:auto;gap:5px}
   .top-actions>button,
