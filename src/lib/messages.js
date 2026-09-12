@@ -149,7 +149,7 @@ function installUnreadMessageIndicator() {
       };
       const cancel = () => clearTimeout(longPressState.timer);
       item.addEventListener("pointerdown", start, { passive: true });
-      item.addEventListener("pointerup", event => { cancel(); if (longPressState.fired && longPressState.item === item) { event.preventDefault(); event.stopImmediatePropagation(); removeLongPressMenu(); } });
+      item.addEventListener("pointerup", event => { cancel(); if (longPressState.fired && longPressState.item === item) { event.preventDefault(); event.stopImmediatePropagation(); } });
       item.addEventListener("pointercancel", cancel);
       item.addEventListener("pointerleave", cancel);
       item.addEventListener("contextmenu", event => { event.preventDefault(); clearTimeout(longPressState.timer); longPressState.fired = true; showChatActionMenu(item); });
