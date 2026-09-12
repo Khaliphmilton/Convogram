@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { Bookmark, Camera, Check, Grid3X3, Heart, Link2, Lock, MessageCircle, MoreHorizontal, PlaySquare, Plus, Settings, Share2, Sparkles, Tag, UserPlus, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bookmark, Camera, Check, Grid3X3, Heart, Link2, MessageCircle, MoreHorizontal, PlaySquare, Plus, Settings, Share2, Sparkles, Tag, UserPlus, Users, X } from "lucide-react";
 import { followUser, unfollowUser, isFollowing, getFollowers, getFollowing } from "../lib/profiles";
 import { getSavedPosts, getLikedPosts, getTaggedPosts, getSavedPostIds, savePost, unsavePost, updateProfile } from "../lib/profile_features";
+import { supabase } from "../lib/supabase";
 
 const tabs = [
   { id: "posts", label: "Posts", icon: Grid3X3 },
@@ -24,6 +25,8 @@ export function ProfilePanel({ profile, stats, posts = [], userId, onCreatePost,
   const [moreOpen, setMoreOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const avatarInputRef = useRef(null);
   const [edit, setEdit] = useState({ display_name: profile?.display_name || "", username: profile?.username || "", bio: profile?.bio || "", website: profile?.website || "", is_private: !!profile?.is_private });
 
   const ownPosts = useMemo(() => posts.filter((post) => post.user_id === profile?.id), [posts, profile?.id]);
@@ -71,6 +74,28 @@ export function ProfilePanel({ profile, stats, posts = [], userId, onCreatePost,
     } catch (err) { toast(err.message || "Follow action failed."); }
   }
 
+  async function changeAvatar(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !userId || !isOwnProfile) return;
+    if (!file.type.startsWith("image/")) { toast("Choose an image for your profile photo."); return; }
+    if (file.size > 5 * 1024 * 1024) { toast("Profile photos must be 5 MB or smaller."); return; }
+    setAvatarSaving(true);
+    try {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+      const path = `${userId}/avatar-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = supabase.storage.from("avatars").getPublicUrl(path);
+      if (!publicData?.publicUrl) throw new Error("Could not create the profile photo URL.");
+      const updated = await updateProfile(userId, { avatar_url: publicData.publicUrl });
+      onProfileUpdated?.(updated);
+      toast("Profile photo updated");
+    } catch (err) {
+      toast(err.message || "Could not update profile photo. Make sure the avatars storage bucket is configured.");
+    } finally { setAvatarSaving(false); }
+  }
+
   async function toggleSave(postId) {
     try {
       if (savedIds.has(postId)) {
@@ -103,7 +128,9 @@ export function ProfilePanel({ profile, stats, posts = [], userId, onCreatePost,
     <div className="profile-pro-body">
       <div className="profile-pro-head">
         <div className="profile-pro-avatar-wrap">
-          <div className="profile-pro-avatar">{(profile?.display_name || profile?.username || "C").charAt(0).toUpperCase()}</div>
+          {profile?.avatar_url ? <img className="profile-pro-avatar" src={profile.avatar_url} alt="Profile" /> : <div className="profile-pro-avatar">{(profile?.display_name || profile?.username || "C").charAt(0).toUpperCase()}</div>}
+          {isOwnProfile && <button className="profile-avatar-edit" type="button" onClick={() => avatarInputRef.current?.click()} aria-label="Change profile photo" title="Change profile photo" disabled={avatarSaving}><Camera size={16} />{avatarSaving && <span className="profile-avatar-spinner" />}</button>}
+          <input ref={avatarInputRef} className="profile-avatar-input" type="file" accept="image/*" onChange={changeAvatar} />
           <span className="profile-online" />
         </div>
         <div className="profile-pro-identity">
@@ -113,8 +140,8 @@ export function ProfilePanel({ profile, stats, posts = [], userId, onCreatePost,
           <div className="profile-meta"><span><Link2 size={14} /> {profile?.website || `convogram.social/${profile?.username || "user"}`}</span><span><Sparkles size={14} /> Creator</span></div>
         </div>
         <div className="profile-pro-menu">
-          {isOwnProfile && <button onClick={() => setActive("settings")} aria-label="Settings"><Settings size={19} /></button>}
-          <button onClick={() => setMoreOpen(true)} aria-label="Profile options"><MoreHorizontal size={20} /></button>
+          {isOwnProfile && <button onClick={() => setEditOpen(true)} aria-label="Edit profile" title="Edit profile"><Settings size={19} /></button>}
+          <button onClick={() => setMoreOpen(true)} aria-label="Profile options" title="Profile options"><MoreHorizontal size={20} /></button>
         </div>
       </div>
 
@@ -131,6 +158,7 @@ export function ProfilePanel({ profile, stats, posts = [], userId, onCreatePost,
         {isOwnProfile && <button onClick={onCreatePost}><Plus size={16} /> Post</button>}
       </div>
 
+      <div className="profile-section-label"><span>Highlights</span><small>Stories & collections</small></div>
       <div className="profile-highlights">
         <button onClick={() => toast("Highlight creation ready for media selection")}><span className="highlight-circle add"><Plus size={22} /></span><small>New</small></button>
         <button onClick={() => toast("Moments highlight opened")}><span className="highlight-circle"><Sparkles size={21} /></span><small>Moments</small></button>
@@ -138,6 +166,7 @@ export function ProfilePanel({ profile, stats, posts = [], userId, onCreatePost,
         <button onClick={() => toast("Community highlight opened")}><span className="highlight-circle"><Users size={21} /></span><small>Community</small></button>
       </div>
 
+      <div className="profile-section-label profile-content-label"><span>Content</span><small>Choose a section</small></div>
       <div className="profile-tabs">
         {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={active === id ? "active" : ""} onClick={() => setActive(id)}><Icon size={17} /><span>{label}</span></button>)}
       </div>
@@ -156,6 +185,7 @@ export function ProfilePanel({ profile, stats, posts = [], userId, onCreatePost,
 
     {moreOpen && <div className="cv-modal-backdrop" onClick={() => setMoreOpen(false)}><div className="cv-modal light" onClick={(e) => e.stopPropagation()}><div className="cv-modal-head"><h2>Profile options</h2><button className="cv-close" onClick={() => setMoreOpen(false)}><X size={18} /></button></div><div className="cv-setting-list">
       {isOwnProfile && <button className="cv-setting" onClick={() => { setMoreOpen(false); setEditOpen(true); }}><Settings size={19} /><span><strong>Edit profile</strong><small>Update your name, username and bio</small></span></button>}
+      {isOwnProfile && <button className="cv-setting" onClick={() => { setMoreOpen(false); avatarInputRef.current?.click(); }}><Camera size={19} /><span><strong>Change profile photo</strong><small>Choose a new picture for your profile</small></span></button>}
       <button className="cv-setting" onClick={() => { setMoreOpen(false); navigator.clipboard?.writeText(`${window.location.origin}/profile/${profile?.username || "user"}`); toast("Profile link copied"); }}><Share2 size={19} /><span><strong>Share profile</strong><small>Copy your public profile link</small></span></button>
       {!isOwnProfile && <button className="cv-setting" onClick={() => { setMoreOpen(false); toast("Profile options ready"); }}><MoreHorizontal size={19} /><span><strong>More</strong><small>Additional profile actions</small></span></button>}
     </div></div></div>}
