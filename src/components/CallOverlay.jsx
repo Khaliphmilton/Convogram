@@ -5,208 +5,80 @@ import { supabase } from "../lib/supabase";
 import { registerCallPush } from "../lib/push";
 import "./CallOverlay.css";
 
-const ICE_SERVERS = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
-
+const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }];
 function makeCallId() { return crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`; }
+function waitForIceGathering(pc) { return new Promise((resolve) => { if (pc.iceGatheringState === "complete") return resolve(); const done = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", done); resolve(); } }; pc.addEventListener("icegatheringstatechange", done); setTimeout(() => { pc.removeEventListener("icegatheringstatechange", done); resolve(); }, 4000); }); }
 
 export function CallOverlay({ conversationId = null, userId, remoteUserId = null, remoteName = "Contact", global = false }) {
-  const [call, setCall] = useState(null);
-  const [incoming, setIncoming] = useState(null);
-  const [muted, setMuted] = useState(false);
-  const [cameraOff, setCameraOff] = useState(false);
-  const [error, setError] = useState("");
-  const channelRef = useRef(null);
-  const pcRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const remoteStreamRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const localVideoRef = useRef(null);
-  const pendingIceRef = useRef([]);
-  const callRef = useRef(null);
-  const targetRef = useRef({ conversationId, remoteUserId, remoteName });
-
+  const [call, setCall] = useState(null); const [incoming, setIncoming] = useState(null); const [muted, setMuted] = useState(false); const [cameraOff, setCameraOff] = useState(false); const [error, setError] = useState("");
+  const channelRef = useRef(null); const pcRef = useRef(null); const localStreamRef = useRef(null); const remoteStreamRef = useRef(null); const remoteVideoRef = useRef(null); const localVideoRef = useRef(null); const pendingIceRef = useRef([]); const callRef = useRef(null); const targetRef = useRef({ conversationId, remoteUserId, remoteName });
   useEffect(() => { callRef.current = call; }, [call]);
-  useEffect(() => {
-    targetRef.current = { conversationId, remoteUserId, remoteName };
-    if (!global && conversationId && remoteUserId) window.__convogramCallTarget = { conversationId, remoteUserId, remoteName };
-  }, [conversationId, remoteUserId, remoteName, global]);
+  useEffect(() => { targetRef.current = { conversationId, remoteUserId, remoteName }; if (!global && conversationId && remoteUserId) window.__convogramCallTarget = { conversationId, remoteUserId, remoteName }; }, [conversationId, remoteUserId, remoteName, global]);
 
   useEffect(() => {
     if (!userId || !supabase) return undefined;
     const topic = global ? `convogram-user-${userId}` : conversationId ? `convogram-call-${conversationId}` : null;
     if (!topic) return undefined;
-    const channel = supabase.channel(topic);
-    channelRef.current = channel;
-    channel.on("broadcast", { event: "signal" }, async ({ payload }) => {
-      if (!payload || payload.senderId === userId || (payload.toUserId && payload.toUserId !== userId)) return;
-      try { await handleSignal(payload); } catch (err) { setError(err.message || "Call connection failed."); }
-    }).subscribe();
-
+    const channel = supabase.channel(topic); channelRef.current = channel;
+    channel.on("broadcast", { event: "signal" }, async ({ payload }) => { if (!payload || payload.senderId === userId || (payload.toUserId && payload.toUserId !== userId)) return; try { await handleSignal(payload); } catch (err) { setError(err.message || "Call connection failed."); } }).subscribe();
     const startHandler = (e) => {
       const detail = e.detail || {};
-      if (global) {
-        const target = detail.remoteUserId && detail.conversationId ? { conversationId: detail.conversationId, remoteUserId: detail.remoteUserId, remoteName: detail.remoteName || "Contact" } : window.__convogramCallTarget;
-        if (callRef.current || !target?.remoteUserId || !target?.conversationId) return;
-        startCall(detail.type || "voice", target.remoteUserId, target.remoteName || "Contact", target.conversationId);
-      } else {
-        if (window.__convogramGlobalCalls || callRef.current) return;
-        const target = targetRef.current;
-        if (target.remoteUserId && target.conversationId) startCall(detail.type || "voice", target.remoteUserId, target.remoteName || "Contact", target.conversationId);
-      }
+      if (global) { const target = detail.remoteUserId && detail.conversationId ? { conversationId: detail.conversationId, remoteUserId: detail.remoteUserId, remoteName: detail.remoteName || "Contact" } : window.__convogramCallTarget; if (callRef.current || !target?.remoteUserId || !target?.conversationId) return; startCall(detail.type || "voice", target.remoteUserId, target.remoteName || "Contact", target.conversationId); }
+      else { if (window.__convogramGlobalCalls || callRef.current) return; const target = targetRef.current; if (target.remoteUserId && target.conversationId) startCall(detail.type || "voice", target.remoteUserId, target.remoteName || "Contact", target.conversationId); }
     };
     window.addEventListener("convogram-start-call", startHandler);
-    return () => {
-      window.removeEventListener("convogram-start-call", startHandler);
-      supabase.removeChannel(channel);
-      channelRef.current = null;
-      cleanup(false);
-    };
+    let cancelled = false;
+    if (global) loadPendingIncoming().catch(() => {});
+    return () => { cancelled = true; window.removeEventListener("convogram-start-call", startHandler); supabase.removeChannel(channel); channelRef.current = null; cleanup(false); void cancelled; };
   }, [userId, conversationId, global]);
 
-  useEffect(() => {
-    if (localVideoRef.current && localStreamRef.current) localVideoRef.current.srcObject = localStreamRef.current;
-    if (remoteVideoRef.current && remoteStreamRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current;
-  }, [call?.type, call?.status]);
+  useEffect(() => { if (localVideoRef.current && localStreamRef.current) localVideoRef.current.srcObject = localStreamRef.current; if (remoteVideoRef.current && remoteStreamRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current; }, [call?.type, call?.status]);
 
-  async function signal(payload, targetUserId) {
-    if (!supabase || !targetUserId) return;
-    const channel = channelRef.current;
-    if (channel) await channel.send({ type: "broadcast", event: "signal", payload: { ...payload, senderId: userId, toUserId: targetUserId } });
+  async function loadPendingIncoming() {
+    const { data, error: dbError } = await supabase.from("call_sessions").select("*").eq("callee_id", userId).eq("status", "ringing").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }).limit(1);
+    if (dbError || !data?.[0] || callRef.current) return;
+    const row = data[0];
+    setIncoming({ callId: row.call_id, type: row.call_type, offer: row.offer, conversationId: row.conversation_id, senderId: row.caller_id, remoteName: "Contact" });
   }
 
-  function createPeer(callId, type, peerId) {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    pc.onicecandidate = (event) => { if (event.candidate) signal({ kind: "ice", callId, candidate: event.candidate }, peerId); };
-    pc.ontrack = (event) => {
-      if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream();
-      (event.streams?.[0]?.getTracks() || [event.track]).forEach((track) => { if (!remoteStreamRef.current.getTracks().some((t) => t.id === track.id)) remoteStreamRef.current.addTrack(track); });
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current;
-    };
-    pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") setError("The call connection failed."); };
-    pcRef.current = pc;
-    return pc;
-  }
-
-  async function getLocalMedia(type) {
-    const constraints = type === "video" ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } } : { audio: true };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    localStreamRef.current = stream;
-    if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-    return stream;
-  }
+  async function signal(payload, targetUserId) { if (!supabase || !targetUserId) return; const channel = channelRef.current; if (channel) await channel.send({ type: "broadcast", event: "signal", payload: { ...payload, senderId: userId, toUserId: targetUserId } }); }
+  function createPeer(callId, type, peerId) { const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS }); pc.onicecandidate = (event) => { if (event.candidate) signal({ kind: "ice", callId, candidate: event.candidate }, peerId); }; pc.ontrack = (event) => { if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream(); (event.streams?.[0]?.getTracks() || [event.track]).forEach((track) => { if (!remoteStreamRef.current.getTracks().some((t) => t.id === track.id)) remoteStreamRef.current.addTrack(track); }); if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current; }; pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") setError("The call connection failed."); }; pcRef.current = pc; return pc; }
+  async function getLocalMedia(type) { const constraints = type === "video" ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } } : { audio: true }; const stream = await navigator.mediaDevices.getUserMedia(constraints); localStreamRef.current = stream; if (localVideoRef.current) localVideoRef.current.srcObject = stream; return stream; }
 
   async function startCall(type, peerId, peerName, targetConversationId) {
     if (!peerId || !targetConversationId) { setError("This conversation has no other participant to call."); return; }
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) { setError("Calling is not supported by this browser."); return; }
     try {
-      setError("");
-      const callId = makeCallId();
-      const stream = await getLocalMedia(type);
-      const pc = createPeer(callId, type, peerId);
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      targetRef.current = { conversationId: targetConversationId, remoteUserId: peerId, remoteName: peerName };
-      setCall({ callId, type, status: "calling", remoteName: peerName, remoteUserId: peerId, conversationId: targetConversationId });
-      await signal({ kind: "offer", callId, type, offer, conversationId: targetConversationId, remoteName: peerName }, peerId);
+      setError(""); const callId = makeCallId(); const stream = await getLocalMedia(type); const pc = createPeer(callId, type, peerId); stream.getTracks().forEach((track) => pc.addTrack(track, stream)); const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await waitForIceGathering(pc);
+      targetRef.current = { conversationId: targetConversationId, remoteUserId: peerId, remoteName: peerName }; setCall({ callId, type, status: "calling", remoteName: peerName, remoteUserId: peerId, conversationId: targetConversationId });
+      await supabase.from("call_sessions").insert({ call_id: callId, conversation_id: targetConversationId, caller_id: userId, callee_id: peerId, call_type: type, offer: pc.localDescription?.toJSON?.() || pc.localDescription, status: "ringing" });
+      await signal({ kind: "offer", callId, type, offer: pc.localDescription?.toJSON?.() || pc.localDescription, conversationId: targetConversationId, remoteName: peerName }, peerId);
       supabase.functions.invoke("push-call", { body: { toUserId: peerId, callId, type, conversationId: targetConversationId, callerName: peerName } }).catch(() => {});
-    } catch (err) {
-      cleanup(false);
-      setError(err.name === "NotAllowedError" ? "Microphone/camera permission was denied." : err.message || "Could not start the call.");
-    }
+    } catch (err) { cleanup(false); setError(err.name === "NotAllowedError" ? "Microphone/camera permission was denied." : err.message || "Could not start the call."); }
   }
 
   async function handleSignal(payload) {
-    if (payload.kind === "offer") {
-      if (callRef.current?.callId && callRef.current.callId !== payload.callId) return;
-      setIncoming((current) => current?.callId === payload.callId ? current : { ...payload, fromUserId: payload.senderId, remoteName: payload.remoteName || "Contact" });
-      return;
-    }
-    if (payload.kind === "answer") {
-      if (!callRef.current || callRef.current.callId !== payload.callId) return;
-      await pcRef.current?.setRemoteDescription(new RTCSessionDescription(payload.answer));
-      await flushIce();
-      setCall((current) => current ? { ...current, status: "connected" } : current);
-      return;
-    }
-    if (payload.kind === "ice") {
-      if (!callRef.current || callRef.current.callId !== payload.callId || !pcRef.current) return;
-      if (pcRef.current.remoteDescription) await pcRef.current.addIceCandidate(payload.candidate); else pendingIceRef.current.push(payload.candidate);
-      return;
-    }
-    if (payload.kind === "hangup") {
-      if (callRef.current?.callId === payload.callId || incoming?.callId === payload.callId) cleanup(false);
-    }
+    if (payload.kind === "offer") { if (callRef.current?.callId && callRef.current.callId !== payload.callId) return; setIncoming((current) => current?.callId === payload.callId ? current : { ...payload, fromUserId: payload.senderId, remoteName: payload.remoteName || "Contact" }); return; }
+    if (payload.kind === "answer") { if (!callRef.current || callRef.current.callId !== payload.callId) return; await pcRef.current?.setRemoteDescription(new RTCSessionDescription(payload.answer)); await flushIce(); await supabase.from("call_sessions").update({ status: "answered" }).eq("call_id", payload.callId); setCall((current) => current ? { ...current, status: "connected" } : current); return; }
+    if (payload.kind === "ice") { if (!callRef.current || callRef.current.callId !== payload.callId || !pcRef.current) return; if (pcRef.current.remoteDescription) await pcRef.current.addIceCandidate(payload.candidate); else pendingIceRef.current.push(payload.candidate); return; }
+    if (payload.kind === "hangup") { if (callRef.current?.callId === payload.callId || incoming?.callId === payload.callId) { await supabase.from("call_sessions").update({ status: "ended" }).eq("call_id", payload.callId); cleanup(false); } }
   }
-
-  async function flushIce() {
-    const pc = pcRef.current;
-    if (!pc?.remoteDescription) return;
-    const queued = pendingIceRef.current.splice(0);
-    for (const candidate of queued) try { await pc.addIceCandidate(candidate); } catch (_) {}
-  }
+  async function flushIce() { const pc = pcRef.current; if (!pc?.remoteDescription) return; const queued = pendingIceRef.current.splice(0); for (const candidate of queued) try { await pc.addIceCandidate(candidate); } catch (_) {} }
 
   async function acceptIncoming() {
     if (!incoming) return;
     try {
-      setError("");
-      const pending = incoming;
-      setIncoming(null);
-      const stream = await getLocalMedia(pending.type);
-      const pc = createPeer(pending.callId, pending.type, pending.senderId);
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-      await pc.setRemoteDescription(new RTCSessionDescription(pending.offer));
-      await flushIce();
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      targetRef.current = { conversationId: pending.conversationId, remoteUserId: pending.senderId, remoteName: pending.remoteName || "Contact" };
-      setCall({ callId: pending.callId, type: pending.type, status: "connected", remoteName: pending.remoteName || "Contact", remoteUserId: pending.senderId, conversationId: pending.conversationId });
-      await signal({ kind: "answer", callId: pending.callId, type: pending.type, answer, conversationId: pending.conversationId }, pending.senderId);
-    } catch (err) {
-      cleanup(false);
-      setError(err.name === "NotAllowedError" ? "Microphone/camera permission was denied." : err.message || "Could not answer the call.");
-    }
+      setError(""); const pending = incoming; setIncoming(null); const stream = await getLocalMedia(pending.type); const pc = createPeer(pending.callId, pending.type, pending.senderId); stream.getTracks().forEach((track) => pc.addTrack(track, stream)); await pc.setRemoteDescription(new RTCSessionDescription(pending.offer)); await flushIce(); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); await waitForIceGathering(pc);
+      targetRef.current = { conversationId: pending.conversationId, remoteUserId: pending.senderId, remoteName: pending.remoteName || "Contact" }; setCall({ callId: pending.callId, type: pending.type, status: "connected", remoteName: pending.remoteName || "Contact", remoteUserId: pending.senderId, conversationId: pending.conversationId });
+      await supabase.from("call_sessions").update({ status: "answered" }).eq("call_id", pending.callId);
+      await signal({ kind: "answer", callId: pending.callId, type: pending.type, answer: pc.localDescription?.toJSON?.() || pc.localDescription, conversationId: pending.conversationId }, pending.senderId);
+    } catch (err) { cleanup(false); setError(err.name === "NotAllowedError" ? "Microphone/camera permission was denied." : err.message || "Could not answer the call."); }
   }
-
-  async function declineIncoming() {
-    if (!incoming) return;
-    await signal({ kind: "hangup", callId: incoming.callId }, incoming.senderId);
-    setIncoming(null);
-  }
-
-  async function hangup() {
-    if (callRef.current?.callId) await signal({ kind: "hangup", callId: callRef.current.callId }, callRef.current.remoteUserId);
-    cleanup(false);
-  }
-
-  function cleanup(resetError = true) {
-    pcRef.current?.close();
-    pcRef.current = null;
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    localStreamRef.current = null;
-    remoteStreamRef.current = null;
-    pendingIceRef.current = [];
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    setCall(null);
-    setIncoming(null);
-    if (resetError) setError("");
-  }
-
-  function toggleMute() {
-    const next = !muted;
-    localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next; });
-    setMuted(next);
-  }
-
-  function toggleCamera() {
-    const next = !cameraOff;
-    localStreamRef.current?.getVideoTracks().forEach((track) => { track.enabled = !next; });
-    setCameraOff(next);
-  }
+  async function declineIncoming() { if (!incoming) return; await supabase.from("call_sessions").update({ status: "declined" }).eq("call_id", incoming.callId); await signal({ kind: "hangup", callId: incoming.callId }, incoming.senderId); setIncoming(null); }
+  async function hangup() { if (callRef.current?.callId) { await supabase.from("call_sessions").update({ status: "ended" }).eq("call_id", callRef.current.callId); await signal({ kind: "hangup", callId: callRef.current.callId }, callRef.current.remoteUserId); } cleanup(false); }
+  function cleanup(resetError = true) { pcRef.current?.close(); pcRef.current = null; localStreamRef.current?.getTracks().forEach((track) => track.stop()); localStreamRef.current = null; remoteStreamRef.current = null; pendingIceRef.current = []; if (localVideoRef.current) localVideoRef.current.srcObject = null; if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null; setCall(null); setIncoming(null); if (resetError) setError(""); }
+  function toggleMute() { const next = !muted; localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next; }); setMuted(next); }
+  function toggleCamera() { const next = !cameraOff; localStreamRef.current?.getVideoTracks().forEach((track) => { track.enabled = !next; }); setCameraOff(next); }
 
   if (!global && !conversationId) return null;
   const displayName = call?.remoteName || incoming?.remoteName || remoteName;
@@ -219,18 +91,8 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
 
 if (typeof window !== "undefined" && !window.__convogramGlobalCalls) {
   window.__convogramGlobalCalls = true;
-  const host = document.createElement("div");
-  host.id = "convogram-global-call-root";
-  document.body.appendChild(host);
+  const host = document.createElement("div"); host.id = "convogram-global-call-root"; document.body.appendChild(host);
   const root = createRoot(host);
-  const renderGlobal = async () => {
-    const { data } = await supabase.auth.getSession();
-    const userId = data.session?.user?.id;
-    if (userId) {
-      root.render(<CallOverlay global userId={userId} />);
-      registerCallPush(userId).catch(() => {});
-    } else root.render(null);
-  };
-  renderGlobal();
-  supabase.auth.onAuthStateChange(() => renderGlobal());
+  const renderGlobal = async () => { const { data } = await supabase.auth.getSession(); const userId = data.session?.user?.id; if (userId) { root.render(<CallOverlay global userId={userId} />); registerCallPush(userId).catch(() => {}); } else root.render(null); };
+  renderGlobal(); supabase.auth.onAuthStateChange(() => renderGlobal());
 }
