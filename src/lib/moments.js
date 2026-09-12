@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 export async function getMomentsForFeed(userId, limit = 50) {
   const { data, error } = await supabase
     .from("moments")
-    .select(`*, profiles:user_id(id, username, display_name, avatar_url, is_private), moment_views(count), moment_likes(count), moment_comments(count)`)
+    .select(`*, profiles:user_id(id, username, display_name, avatar_url, is_private), moment_views(count), moment_likes(count)`)
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -14,7 +14,7 @@ export async function getMomentsForFeed(userId, limit = 50) {
 export async function getUserMoments(userId) {
   const { data, error } = await supabase
     .from("moments")
-    .select(`*, profiles:user_id(id, username, display_name, avatar_url), moment_views(count), moment_likes(count), moment_comments(count)`)
+    .select(`*, profiles:user_id(id, username, display_name, avatar_url), moment_views(count), moment_likes(count)`)
     .eq("user_id", userId)
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false });
@@ -57,18 +57,6 @@ export async function likeMoment(momentId,userId) {
 export async function unlikeMoment(momentId,userId) {
   const {error}=await supabase.from("moment_likes").delete().eq("moment_id",momentId).eq("user_id",userId);
   if(error) throw error;
-}
-
-export async function getMomentComments(momentId) {
-  const {data,error}=await supabase.from("moment_comments").select(`*, profiles:user_id(id,username,display_name,avatar_url)`).eq("moment_id",momentId).order("created_at",{ascending:true});
-  if(error) throw error;
-  return data;
-}
-
-export async function addMomentComment(momentId,userId,content) {
-  const {data,error}=await supabase.from("moment_comments").insert([{moment_id:momentId,user_id:userId,content}]).select(`*, profiles:user_id(id,username,display_name,avatar_url)`).single();
-  if(error) throw error;
-  return data;
 }
 
 export async function deleteMoment(momentId) {
