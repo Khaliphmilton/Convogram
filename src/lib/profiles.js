@@ -1,102 +1,15 @@
 import { supabase } from "./supabase";
 
-export async function getProfile(userId) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .single();
-  if (error) throw error;
-  return data;
-}
+const PROFILE_FIELDS="id, username, display_name, avatar_url, is_verified, verification_status";
+export async function getProfile(userId){const{data,error}=await supabase.from("profiles").select("*").eq("id",userId).single();if(error)throw error;return data;}
+export async function searchProfiles(query){const{data,error}=await supabase.from("profiles").select("*").or(`username.ilike.%${query}%,display_name.ilike.%${query}%`).limit(20);if(error)throw error;return data;}
+export async function getProfileStats(userId){const[posts,followers,following]=await Promise.all([supabase.from("posts").select("id",{count:"exact",head:true}).eq("user_id",userId),supabase.from("follows").select("id",{count:"exact",head:true}).eq("following_id",userId),supabase.from("follows").select("id",{count:"exact",head:true}).eq("follower_id",userId)]);return{postsCount:posts.count||0,followersCount:followers.count||0,followingCount:following.count||0};}
+export async function followUser(followerId,followingId){if(!followerId||!followingId||followerId===followingId)return null;const{data,error}=await supabase.from("follows").upsert([{follower_id:followerId,following_id:followingId}],{onConflict:"follower_id,following_id",ignoreDuplicates:true}).select().maybeSingle();if(error)throw error;return data;}
+export async function unfollowUser(followerId,followingId){const{error}=await supabase.from("follows").delete().eq("follower_id",followerId).eq("following_id",followingId);if(error)throw error;}
+export async function isFollowing(followerId,followingId){const{data,error}=await supabase.from("follows").select("id").eq("follower_id",followerId).eq("following_id",followingId).maybeSingle();if(error)throw error;return!!data;}
+export async function getFollowers(userId){const{data,error}=await supabase.from("follows").select(`*, profiles:follower_id(${PROFILE_FIELDS})`).eq("following_id",userId);if(error)throw error;return data?.map(f=>f.profiles);}
+export async function getFollowing(userId){const{data,error}=await supabase.from("follows").select(`*, profiles:following_id(${PROFILE_FIELDS})`).eq("follower_id",userId);if(error)throw error;return data?.map(f=>f.profiles);}
 
-export async function searchProfiles(query) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
-    .limit(20);
-  if (error) throw error;
-  return data;
-}
-
-export async function getProfileStats(userId) {
-  const [posts, followers, following] = await Promise.all([
-    supabase
-      .from("posts")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId),
-    supabase
-      .from("follows")
-      .select("id", { count: "exact", head: true })
-      .eq("following_id", userId),
-    supabase
-      .from("follows")
-      .select("id", { count: "exact", head: true })
-      .eq("follower_id", userId),
-  ]);
-
-  return {
-    postsCount: posts.count || 0,
-    followersCount: followers.count || 0,
-    followingCount: following.count || 0,
-  };
-}
-
-export async function followUser(followerId, followingId) {
-  const { data, error } = await supabase
-    .from("follows")
-    .insert([{ follower_id: followerId, following_id: followingId }])
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function unfollowUser(followerId, followingId) {
-  const { error } = await supabase
-    .from("follows")
-    .delete()
-    .eq("follower_id", followerId)
-    .eq("following_id", followingId);
-  if (error) throw error;
-}
-
-export async function isFollowing(followerId, followingId) {
-  const { data, error } = await supabase
-    .from("follows")
-    .select("id")
-    .eq("follower_id", followerId)
-    .eq("following_id", followingId)
-    .single();
-  if (error && error.code !== "PGRST116") throw error;
-  return !!data;
-}
-
-export async function getFollowers(userId) {
-  const { data, error } = await supabase
-    .from("follows")
-    .select(
-      `
-      *,
-      profiles:follower_id(id, username, display_name, avatar_url)
-    `
-    )
-    .eq("following_id", userId);
-  if (error) throw error;
-  return data?.map((f) => f.profiles);
-}
-
-export async function getFollowing(userId) {
-  const { data, error } = await supabase
-    .from("follows")
-    .select(
-      `
-      *,
-      profiles:following_id(id, username, display_name, avatar_url)
-    `
-    )
-    .eq("follower_id", userId);
-  if (error) throw error;
-  return data?.map((f) => f.profiles);
-}
+let followBusy=false;
+async function wireFeedFollowButton(button){if(followBusy)return;const card=button.closest(".post-card");const handle=card?.querySelector(".author-username")?.textContent?.trim().replace(/^@/,"");if(!handle)return;followBusy=true;const original=button.textContent;button.disabled=true;try{const{data:{user}}=await supabase.auth.getUser();if(!user)throw new Error("Please sign in first.");const{data:target,error:targetError}=await supabase.from("profiles").select("id").eq("username",handle).maybeSingle();if(targetError)throw targetError;if(!target?.id||target.id===user.id) return;const following=await isFollowing(user.id,target.id);if(following){await unfollowUser(user.id,target.id);button.textContent="Follow";button.classList.remove("following");}else{await followUser(user.id,target.id);button.textContent="Following";button.classList.add("following");}}catch(error){console.error("Convogram follow error",error);button.textContent=original||"Follow";}finally{button.disabled=false;followBusy=false;}}
+if(typeof document!=="undefined"){document.addEventListener("click",event=>{const button=event.target.closest?.(".post-card .follow-button");if(button){event.preventDefault();event.stopPropagation();wireFeedFollowButton(button);}},true);}
