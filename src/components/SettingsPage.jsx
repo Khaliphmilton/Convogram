@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { ArrowLeft, BadgeCheck, Bell, Lock, LogOut, Shield, UserCog, MessageSquare, ChevronRight } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Bell, Lock, LogOut, Shield, UserCog, MessageSquare, ChevronRight, ShieldCheck } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { VerificationRequestPage } from "./VerificationRequestPage";
+import { VerificationAdminPage } from "./VerificationAdminPage";
 
 const panelStyle = { marginTop: 12, padding: 18, borderRadius: 16, border: "1px solid rgba(120,140,180,.18)", background: "rgba(255,255,255,.035)" };
 const actionStyle = { width: "100%", padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(120,140,180,.2)", background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", marginTop: 10 };
+const ADMIN_EMAIL = "khaliphindustries@gmail.com";
 
 export function SettingsPage({ profile, userId, email, onBack, onEditProfile, onLogout, onProfileUpdated }) {
   const [open, setOpen] = useState(null);
@@ -44,6 +46,9 @@ export function SettingsPage({ profile, userId, email, onBack, onEditProfile, on
   </>;
 
   if (open === "verification") return <VerificationRequestPage profile={profile} userId={userId} onBack={() => setOpen(null)} />;
+  if (open === "verification-admin") return <VerificationAdminPage email={email} onBack={() => setOpen(null)} />;
+
+  const isAdmin = (email || "").toLowerCase() === ADMIN_EMAIL;
 
   return <section className="settings-page">
     <div className="settings-page-head"><button onClick={onBack} aria-label="Back"><ArrowLeft size={21}/></button><div><small>CONVOGRAM</small><h1>Settings</h1><p>Manage your account and app preferences.</p></div></div>
@@ -51,6 +56,7 @@ export function SettingsPage({ profile, userId, email, onBack, onEditProfile, on
     <div className="settings-card settings-list">
       <SettingsRow icon={UserCog} title="Edit profile" description="Change your name, username, bio and profile photo." action={onEditProfile} />
       <SettingsRow icon={BadgeCheck} title="Request verification" description={profile?.is_verified ? "Your account has the blue verified badge." : profile?.verification_status === "pending" ? "Your verification request is under review." : "Apply for the blue Convogram Verified badge."} action={() => setOpen("verification")} />
+      {isAdmin && <SettingsRow icon={ShieldCheck} title="Verification admin" description="Review pending requests and approve or reject badges." action={() => setOpen("verification-admin")} />}
       <SettingsRow icon={Shield} title="Privacy & security" description="Control who can see and interact with your account." action={() => setOpen(open === "privacy" ? null : "privacy")} />
       {open === "privacy" && <div style={panelStyle}>
         <strong>Privacy</strong><p>Private accounts require people to follow you before they can see your posts.</p>
