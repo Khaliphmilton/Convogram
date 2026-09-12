@@ -1,5 +1,13 @@
 import { supabase } from "./supabase";
 
+let pendingDirectConversationId = null;
+
+export function consumePendingDirectConversationId() {
+  const id = pendingDirectConversationId;
+  pendingDirectConversationId = null;
+  return id;
+}
+
 export async function getConversations(userId, limit = 50) {
   const { data, error } = await supabase
     .from("conversation_members")
@@ -18,7 +26,9 @@ export async function getDirectConversation(userId, otherUserId) {
     p_other_user_id: otherUserId,
   });
   if (error) throw error;
-  return Array.isArray(data) ? data[0] || null : data || null;
+  const conversation = Array.isArray(data) ? data[0] || null : data || null;
+  pendingDirectConversationId = conversation?.id || null;
+  return conversation;
 }
 
 export async function getConversationDetails(conversationId) {
@@ -95,5 +105,6 @@ export async function createConversation(createdBy, type = "direct", name = null
   const allMembers = [...new Set([createdBy, ...memberIds])];
   const { error: memberError } = await supabase.from("conversation_members").insert(allMembers.map((userId) => ({ conversation_id: data.id, user_id: userId, role: userId === createdBy ? "owner" : "member" })));
   if (memberError) throw memberError;
+  pendingDirectConversationId = type === "direct" ? data.id : null;
   return data;
 }
