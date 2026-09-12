@@ -43,19 +43,21 @@ export async function createConversation(createdBy, type = "direct", name = null
 
 function installUnreadMessageIndicator() {
   if (typeof window === "undefined" || !supabase) return () => {};
-  let timer = null; let observer = null; let userId = null; let painting = false;
+  let timer = null; let userId = null; let painting = false;
   const badgeClass = "convogram-unread-message-badge";
   const styleBadge = badge => { badge.style.cssText = "display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ed4956;color:#fff;font-size:11px;font-weight:800;line-height:20px;margin-left:auto;flex:0 0 auto;"; };
   const paintProfile = (node, profile, fallbackType) => {
     if (!node) return;
     node.replaceChildren();
+    node.style.position = "relative";
+    node.style.overflow = "visible";
     const avatarUrl = profile?.avatar_url;
     if (avatarUrl) {
-      const img = document.createElement("img"); img.src = avatarUrl; img.alt = ""; img.className = "convogram-chat-avatar-image"; img.loading = "lazy"; img.decoding = "async"; node.appendChild(img);
+      const img = document.createElement("img"); img.src = avatarUrl; img.alt = ""; img.className = "convogram-chat-avatar-image"; img.loading = "lazy"; img.decoding = "async"; img.style.cssText = "width:100%;height:100%;display:block;border-radius:50%;object-fit:cover;"; node.appendChild(img);
     } else {
-      const icon = document.createElement("span"); icon.className = "convogram-chat-avatar-fallback"; icon.textContent = fallbackType === "group" ? "" : String(profile?.display_name || profile?.username || "?").trim().slice(0, 1).toUpperCase(); node.appendChild(icon);
+      const fallback = document.createElement("span"); fallback.className = "convogram-chat-avatar-fallback"; fallback.textContent = fallbackType === "group" ? "" : String(profile?.display_name || profile?.username || "?").trim().slice(0, 1).toUpperCase(); fallback.style.cssText = "font-size:15px;font-weight:750;line-height:1;"; node.appendChild(fallback);
     }
-    if (profile?.is_verified) { const badge = document.createElement("span"); badge.className = "convogram-verified-badge"; badge.textContent = "✓"; badge.setAttribute("aria-label", "Verified"); node.appendChild(badge); }
+    if (profile?.is_verified) { const badge = document.createElement("span"); badge.className = "convogram-verified-badge"; badge.textContent = "✓"; badge.setAttribute("aria-label", "Verified"); badge.style.cssText = "position:absolute;right:-2px;bottom:-1px;width:16px;height:16px;display:grid;place-items:center;border-radius:50%;background:#1683ff;color:#fff;border:2px solid #080808;font-size:9px;font-weight:900;line-height:1;box-sizing:border-box;"; node.appendChild(badge); }
   };
   const paintAvatars = conversations => {
     const byTitle = new Map(conversations.map(c => [c._display_name || c.name || (c.type === "group" ? "Group conversation" : "Direct conversation"), c]));
@@ -88,11 +90,9 @@ function installUnreadMessageIndicator() {
   };
   const start = async () => {
     const { data } = await supabase.auth.getSession(); userId = data?.session?.user?.id || null; await paint(); if (timer) clearInterval(timer); timer = setInterval(paint, 2500);
-    observer = new MutationObserver(() => { const chatItems = document.querySelectorAll(".conversation-item"); const hasChatBadge = document.querySelector(".conversation-item .convogram-unread-message-badge"); if (chatItems.length && !hasChatBadge) setTimeout(paint, 50); });
-    observer.observe(document.body, { childList: true, subtree: true });
   };
   start();
   const auth = supabase.auth.onAuthStateChange((_event, session) => { userId = session?.user?.id || null; paint(); });
-  return () => { if (timer) clearInterval(timer); observer?.disconnect(); auth.data?.subscription?.unsubscribe(); };
+  return () => { if (timer) clearInterval(timer); auth.data?.subscription?.unsubscribe(); };
 }
 if (typeof window !== "undefined") installUnreadMessageIndicator();
