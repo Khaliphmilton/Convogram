@@ -1,22 +1,39 @@
 import { supabase } from "./supabase";
 
 let pendingDirectConversationId = null;
+const CHAT_TARGET_KEY = "convogram:open-chat";
+
+function rememberChat(id) {
+  pendingDirectConversationId = id || null;
+  if (!id) return;
+  try { sessionStorage.setItem(CHAT_TARGET_KEY, JSON.stringify({ conversationId: id, createdAt: Date.now() })); } catch {}
+}
 
 export function consumePendingDirectConversationId() {
-  const id = pendingDirectConversationId;
+  let id = pendingDirectConversationId;
   pendingDirectConversationId = null;
+  if (!id) {
+    try {
+      const raw = sessionStorage.getItem(CHAT_TARGET_KEY);
+      const target = raw ? JSON.parse(raw) : null;
+      id = target?.conversationId || null;
+    } catch {}
+  }
+  if (id) {
+    try { sessionStorage.removeItem(CHAT_TARGET_KEY); } catch {}
+  }
   return id;
 }
 
 export async function getConversations(userId, limit = 50) {
   const { data, error } = await supabase
     .from("conversation_members")
-    .select(`conversation_id, conversations(*, profiles:created_by(id, username, display_name, avatar_url))`)
+    .select(`conversation_id, joined_at, role, conversations(*, profiles:created_by(id, username, display_name, avatar_url))`)
     .eq("user_id", userId)
     .order("joined_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  return data?.map((m) => m.conversations);
+  return data?.map((m) => m.conversations).filter(Boolean);
 }
 
 export async function getDirectConversation(userId, otherUserId) {
@@ -27,7 +44,7 @@ export async function getDirectConversation(userId, otherUserId) {
   });
   if (error) throw error;
   const conversation = Array.isArray(data) ? data[0] || null : data || null;
-  pendingDirectConversationId = conversation?.id || null;
+  rememberChat(conversation?.id);
   return conversation;
 }
 
@@ -63,19 +80,13 @@ export async function sendMessage(conversationId, senderId, content, messageType
 }
 
 export async function deleteMessage(messageId) {
-  const { data, error } = await supabase
-    .from("messages")
-    .update({ is_deleted: true, content: null, media_url: null, updated_at: new Date().toISOString() })
-    .eq("id", messageId)
-    .select()
-    .single();
+  const { data, error } = await supabase.from("messages").update({ is_deleted: true, content: null, media_url: null, updated_at: new Date().toISOString() }).eq("id", messageId).select().single();
   if (error) throw error;
   return data;
 }
 
 export function subscribeToConversation(conversationId, onInsert, onUpdate) {
-  const channel = supabase
-    .channel(`convogram-chat-${conversationId}`)
+  const channel = supabase.channel(`convogram-chat-${conversationId}`)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, (payload) => onInsert(payload.new))
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, (payload) => onUpdate?.(payload.new))
     .subscribe();
@@ -105,6 +116,6 @@ export async function createConversation(createdBy, type = "direct", name = null
   const allMembers = [...new Set([createdBy, ...memberIds])];
   const { error: memberError } = await supabase.from("conversation_members").insert(allMembers.map((userId) => ({ conversation_id: data.id, user_id: userId, role: userId === createdBy ? "owner" : "member" })));
   if (memberError) throw memberError;
-  pendingDirectConversationId = type === "direct" ? data.id : null;
+  if (type === "direct") rememberChat(data.id);
   return data;
 }
