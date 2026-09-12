@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Heart, MessageCircle, Send, Upload, Video, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Heart, MessageCircle, Send, Upload, Video, Volume2, VolumeX } from "lucide-react";
 import { getShortComments, isShortLikedByUser, likeShort, unlikeShort, addShortComment } from "../lib/shorts";
 import { publishShort } from "../lib/shorts_publish";
 import { VerifiedBadge } from "./VerifiedBadge";
+import { ProfilePanel } from "./ProfilePanel";
 import "./ShortsPanel.css";
 
 export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
@@ -17,6 +18,7 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
   const [muted, setMuted] = useState(true);
+  const [creatorProfile, setCreatorProfile] = useState(null);
   const feedRef = useRef(null);
   const videoRefs = useRef(new Map());
   const swipeStartRef = useRef(null);
@@ -64,8 +66,16 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
 
   function toggleMute() { setMuted((current) => !current); }
 
+  function openCreatorProfile(short) {
+    const creator = short.profiles || {};
+    const creatorId = creator.id || short.user_id || short.creator_id;
+    if (!creatorId) return;
+    const nextProfile = { ...creator, id: creatorId };
+    setCreatorProfile(nextProfile);
+    onOpenCreator?.(nextProfile);
+  }
+
   function handleTouchStart(event, short) {
-    if (!onOpenCreator) return;
     const touch = event.touches?.[0];
     if (touch) swipeStartRef.current = { x: touch.clientX, y: touch.clientY, short };
   }
@@ -73,17 +83,19 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
   function handleTouchEnd(event) {
     const start = swipeStartRef.current;
     swipeStartRef.current = null;
-    if (!start || !onOpenCreator) return;
+    if (!start) return;
     const touch = event.changedTouches?.[0];
     if (!touch) return;
     const dx = touch.clientX - start.x;
     const dy = touch.clientY - start.y;
-    // A deliberate left swipe opens the creator's profile. Ignore mostly vertical swipes.
-    if (dx < -80 && Math.abs(dx) > Math.abs(dy) * 1.25) {
-      const creator = start.short.profiles;
-      const creatorId = creator?.id || start.short.user_id || start.short.creator_id;
-      if (creatorId) onOpenCreator({ ...(creator || {}), id: creatorId });
-    }
+    if (dx < -80 && Math.abs(dx) > Math.abs(dy) * 1.25) openCreatorProfile(start.short);
+  }
+
+  if (creatorProfile) {
+    return <div className="shorts-creator-profile-view">
+      <div className="shorts-creator-profile-bar"><button onClick={() => setCreatorProfile(null)} aria-label="Back to Shorts"><ArrowLeft size={21} /></button><strong>@{creatorProfile.username || "creator"}</strong></div>
+      <ProfilePanel profile={creatorProfile} stats={{ postsCount: 0, followersCount: 0, followingCount: 0 }} userId={userId} initialTab="posts" onPeople={() => {}} onMessage={() => {}} />
+    </div>;
   }
 
   return <div className="shorts-panel">
