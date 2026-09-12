@@ -38,14 +38,20 @@ function VoiceNote({ src }) {
     const audio = audioRef.current;
     if (!audio) return;
     if (audio.paused) {
-      try {
-        await audio.play();
-        setPlaying(true);
-      } catch (_) {}
+      try { await audio.play(); setPlaying(true); } catch (_) {}
     } else {
       audio.pause();
       setPlaying(false);
     }
+  }
+
+  function seek(e) {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * duration;
+    setCurrent(audio.currentTime);
   }
 
   function formatTime(value) {
@@ -63,13 +69,9 @@ function VoiceNote({ src }) {
       {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
     </button>
     <div className="voice-note-main">
-      <button type="button" className="voice-note-track" onClick={() => {
-        const audio = audioRef.current;
-        if (!audio || !duration) return;
-        const rect = audio.currentTarget?.getBoundingClientRect?.();
-      }} aria-label="Voice note progress">
+      <button type="button" className="voice-note-track" onClick={seek} aria-label="Voice note progress">
         <span className="voice-note-wave" aria-hidden="true">
-          {bars.map((height, index) => <i key={index} style={{ height: `${height}px` }} className={index / bars.length * 100 <= progress ? "played" : ""} />)}
+          {bars.map((height, index) => <i key={index} style={{ height: `${height}px` }} />)}
         </span>
         <span className="voice-note-progress" style={{ width: `${progress}%` }} />
       </button>
