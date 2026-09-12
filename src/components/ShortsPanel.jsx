@@ -61,10 +61,7 @@ export function ShortsPanel({ shorts = [], userId }) {
   }
 
   function toggleMute() {
-    setMuted((value) => !value);
-    videoRefs.current.forEach((video) => {
-      if (video) video.muted = !video.muted;
-    });
+    setMuted((current) => !current);
   }
 
   return <div className="shorts-panel">
@@ -72,7 +69,7 @@ export function ShortsPanel({ shorts = [], userId }) {
     {createOpen && <div className="shorts-create-form"><div className="shorts-create-title"><Video size={18} /><strong>New Short</strong></div><label className="short-file-label"><Upload size={17} />{shortFile ? shortFile.name : "Choose video"}<input type="file" accept="video/*" hidden onChange={(e) => setShortFile(e.target.files?.[0] || null)} /></label><input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption" /><input value={soundName} onChange={(e) => setSoundName(e.target.value)} placeholder="Sound name (optional)" /><button onClick={create} disabled={publishing}>{publishing ? "Publishing…" : "Publish"}</button></div>}
     {items.length ? <div className="shorts-panel-feed" ref={feedRef} aria-label="Shorts video feed">
       {items.map((short) => <article className="shorts-panel-card" key={short.id}>
-        <video ref={(node) => node && videoRefs.current.set(short.id, node)} data-short-video src={short.video_url || short.media_url} autoPlay muted={muted} loop playsInline preload="metadata" onClick={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); else e.currentTarget.pause(); }} />
+        <video ref={(node) => { if (node) videoRefs.current.set(short.id, node); else videoRefs.current.delete(short.id); }} data-short-video src={short.video_url || short.media_url} autoPlay muted={muted} loop playsInline preload="metadata" onClick={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); else e.currentTarget.pause(); }} />
         <button className="shorts-mute-button" onClick={toggleMute} aria-label={muted ? "Unmute sound" : "Mute sound"} title={muted ? "Unmute" : "Mute"}>{muted ? <VolumeX size={20} /> : <Volume2 size={20} />}</button>
         <div className="shorts-overlay"><strong>@{short.profiles?.username || "creator"}</strong><p>{short.caption || ""}</p><span>{short.sound_name ? `♫ ${short.sound_name}` : "Original sound"}</span></div>
         <div className="shorts-actions"><button onClick={() => toggleLike(short)} className={short.liked ? "liked" : ""}><Heart fill={short.liked ? "currentColor" : "none"} /><small>{short.short_likes?.[0]?.count || 0}</small></button><button onClick={() => openComments(short)}><MessageCircle /><small>{short.short_comments?.[0]?.count || 0}</small></button><button onClick={() => { if (navigator.share) navigator.share({ title: "Convogram Short", url: short.video_url || short.media_url }).catch(() => {}); }}><Send /></button></div>
