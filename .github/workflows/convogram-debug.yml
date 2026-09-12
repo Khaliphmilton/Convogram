@@ -1,0 +1,26 @@
+name: Convogram build debug
+on:
+  push:
+    branches: [main]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Print parser diagnostics
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const ts = require('typescript');
+          const s = fs.readFileSync('src/main.jsx', 'utf8');
+          console.log('length=', s.length);
+          console.log('around8078=', JSON.stringify(s.slice(7900, 8250)));
+          const f = ts.createSourceFile('main.jsx', s, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+          console.log(ts.getPreEmitDiagnostics({ getSourceFile: n => n === 'main.jsx' ? f : undefined, getSourceFileByPath:()=>f, getDefaultLibFileName:()=>'', writeFile:()=>{}, getCurrentDirectory:()=>process.cwd(), getCanonicalFileName:x=>x, useCaseSensitiveFileNames:()=>true, getNewLine:()=> '\n' }).map(d => ts.flattenDiagnosticMessageText(d.messageText, ' ')));
+          NODE
+      - name: Real Vite build
+        run: npm run build
