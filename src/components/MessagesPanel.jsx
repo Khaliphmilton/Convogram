@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ImagePlus, MessageCircle, Plus, Search, Send, Users, X, Smile, Mic, Square, Reply, Trash2 } from "lucide-react";
-import { getConversations, getConversationDetails, getMessages, sendMessage, createConversation, subscribeToConversation, markMessageAsRead, addMessageReaction, removeMessageReaction, deleteMessage } from "../lib/messages";
+import { getConversations, getConversationDetails, getMessages, sendMessage, createConversation, subscribeToConversation, markMessageAsRead, addMessageReaction, removeMessageReaction, deleteMessage, consumePendingDirectConversationId } from "../lib/messages";
 import { uploadMessageMedia, uploadVoiceMessage } from "../lib/storage";
 import { supabase } from "../lib/supabase";
 import "./MessagesPanel.css";
@@ -35,7 +35,12 @@ export function MessagesPanel({ userId }) {
       const data = await getConversations(userId);
       const clean = (data || []).filter(Boolean);
       setConversations(clean);
-      if (selectFirst && !selectedId && clean[0]?.id) setSelectedId(clean[0].id);
+      const pendingId = consumePendingDirectConversationId();
+      if (pendingId && clean.some((conversation) => conversation.id === pendingId)) {
+        setSelectedId(pendingId);
+      } else if (selectFirst && !selectedId && clean[0]?.id) {
+        setSelectedId(clean[0].id);
+      }
     } catch (err) { setError(err.message || "Unable to load conversations."); }
     finally { setLoading(false); }
   }
