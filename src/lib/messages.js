@@ -47,10 +47,7 @@ export async function getConversations(userId, limit = 50) {
     if (messageError) throw messageError;
     for (const row of rows) {
       const lastRead = row.last_read_at ? new Date(row.last_read_at).getTime() : 0;
-      const count = (incoming || []).filter(message => {
-        if (message.conversation_id !== row.conversation_id) return false;
-        return new Date(message.created_at).getTime() > lastRead;
-      }).length;
+      const count = (incoming || []).filter(message => message.conversation_id === row.conversation_id && new Date(message.created_at).getTime() > lastRead).length;
       unreadByConversation.set(row.conversation_id, count);
     }
   }
@@ -97,7 +94,7 @@ export async function getConversationDetails(conversationId) {
   return data;
 }
 
-export async function getMessages(conversationId, limit = 100) {
+export async function getMessages(conversationId, limit = 100, userId = null) {
   const { data, error } = await supabase
     .from("messages")
     .select(`*, profiles:sender_id(id, username, display_name, avatar_url), message_reactions(*)`)
@@ -105,6 +102,8 @@ export async function getMessages(conversationId, limit = 100) {
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw error;
+
+  if (userId) await markConversationAsRead(conversationId, userId);
 
   const messages = data || [];
   const replyIds = [...new Set(messages.map(message => message.reply_to_id).filter(Boolean))];
