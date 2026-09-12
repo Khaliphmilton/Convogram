@@ -24,6 +24,7 @@
     "@capacitor/cli": "latest",
     "@capacitor/android": "latest",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "typescript": "latest"
   }
 }
