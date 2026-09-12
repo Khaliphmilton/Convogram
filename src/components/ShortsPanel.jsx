@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Heart, MessageCircle, Send, Upload, Video } from "lucide-react";
+import { Heart, MessageCircle, Send, Upload, Video, Volume2, VolumeX } from "lucide-react";
 import { getShortComments, isShortLikedByUser, likeShort, unlikeShort, addShortComment } from "../lib/shorts";
 import { publishShort } from "../lib/shorts_publish";
 import "./ShortsPanel.css";
@@ -15,6 +15,7 @@ export function ShortsPanel({ shorts = [], userId }) {
   const [soundName, setSoundName] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
+  const [muted, setMuted] = useState(true);
   const feedRef = useRef(null);
   const videoRefs = useRef(new Map());
 
@@ -41,6 +42,10 @@ export function ShortsPanel({ shorts = [], userId }) {
     return () => observer.disconnect();
   }, [items]);
 
+  useEffect(() => {
+    videoRefs.current.forEach((video) => { if (video) video.muted = muted; });
+  }, [muted]);
+
   async function toggleLike(item) {
     if (item.liked) await unlikeShort(item.id, userId); else await likeShort(item.id, userId);
     setItems((prev) => prev.map((s) => s.id === item.id ? { ...s, liked: !s.liked, short_likes: [{ count: Math.max(0, (s.short_likes?.[0]?.count || 0) + (s.liked ? -1 : 1)) }] } : s));
@@ -55,12 +60,20 @@ export function ShortsPanel({ shorts = [], userId }) {
     finally { setPublishing(false); }
   }
 
+  function toggleMute() {
+    setMuted((value) => !value);
+    videoRefs.current.forEach((video) => {
+      if (video) video.muted = !video.muted;
+    });
+  }
+
   return <div className="shorts-panel">
     <div className="shorts-create-bar"><button onClick={() => setCreateOpen((v) => !v)}><Upload size={17} /> Create Short</button>{error && <span>{error}</span>}</div>
     {createOpen && <div className="shorts-create-form"><div className="shorts-create-title"><Video size={18} /><strong>New Short</strong></div><label className="short-file-label"><Upload size={17} />{shortFile ? shortFile.name : "Choose video"}<input type="file" accept="video/*" hidden onChange={(e) => setShortFile(e.target.files?.[0] || null)} /></label><input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption" /><input value={soundName} onChange={(e) => setSoundName(e.target.value)} placeholder="Sound name (optional)" /><button onClick={create} disabled={publishing}>{publishing ? "Publishing…" : "Publish"}</button></div>}
     {items.length ? <div className="shorts-panel-feed" ref={feedRef} aria-label="Shorts video feed">
       {items.map((short) => <article className="shorts-panel-card" key={short.id}>
-        <video ref={(node) => node && videoRefs.current.set(short.id, node)} data-short-video src={short.video_url || short.media_url} autoPlay muted loop playsInline preload="metadata" onClick={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); else e.currentTarget.pause(); }} />
+        <video ref={(node) => node && videoRefs.current.set(short.id, node)} data-short-video src={short.video_url || short.media_url} autoPlay muted={muted} loop playsInline preload="metadata" onClick={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); else e.currentTarget.pause(); }} />
+        <button className="shorts-mute-button" onClick={toggleMute} aria-label={muted ? "Unmute sound" : "Mute sound"} title={muted ? "Unmute" : "Mute"}>{muted ? <VolumeX size={20} /> : <Volume2 size={20} />}</button>
         <div className="shorts-overlay"><strong>@{short.profiles?.username || "creator"}</strong><p>{short.caption || ""}</p><span>{short.sound_name ? `♫ ${short.sound_name}` : "Original sound"}</span></div>
         <div className="shorts-actions"><button onClick={() => toggleLike(short)} className={short.liked ? "liked" : ""}><Heart fill={short.liked ? "currentColor" : "none"} /><small>{short.short_likes?.[0]?.count || 0}</small></button><button onClick={() => openComments(short)}><MessageCircle /><small>{short.short_comments?.[0]?.count || 0}</small></button><button onClick={() => { if (navigator.share) navigator.share({ title: "Convogram Short", url: short.video_url || short.media_url }).catch(() => {}); }}><Send /></button></div>
       </article>)}
