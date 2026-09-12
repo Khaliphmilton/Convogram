@@ -73,7 +73,7 @@ export function ShortsPanel({ shorts = [], userId }) {
           <button onClick={() => toggleLike(short)} className={short.liked ? "liked" : ""} aria-label="Like"><Heart fill={short.liked ? "currentColor" : "none"} /><small>{short.short_likes?.[0]?.count || 0}</small></button>
           <button onClick={() => openComments(short)} aria-label="Comment"><MessageCircle /><small>{short.short_comments?.[0]?.count || 0}</small></button>
           <button onClick={() => { if (navigator.share) navigator.share({ title: "Convogram Short", url: short.video_url || short.media_url }).catch(() => {}); }} aria-label="Share"><Send /></button>
-          <button className="shorts-mute-button" onClick={toggleMute} aria-label={muted ? "Unmute sound" : "Mute sound"} title={muted ? "Unmute" : "Mute"}>{muted ? <VolumeX size={20} /> : <Volume2 size={20} />}</button>
+          <button className="shorts-mute-button" onClick={toggleMute} aria-label={muted ? "Unmute sound" : "Mute sound"} title={muted ? "Unmute" : "Mute"}>{muted ? <VolumeX /> : <Volume2 />}</button>
         </div>
       </article>)}
     </div> : <div className="shorts-empty"><Video size={34}/><h2>No Shorts yet</h2><p>Upload a short video to start the feed.</p></div>}
