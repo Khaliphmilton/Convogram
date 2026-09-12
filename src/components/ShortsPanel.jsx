@@ -71,8 +71,9 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
     const creatorId = creator.id || short.user_id || short.creator_id;
     if (!creatorId) return;
     const nextProfile = { ...creator, id: creatorId };
+    // Keep the profile inside the Shorts screen so the local Back button
+    // returns directly to the exact Shorts feed instead of navigating away.
     setCreatorProfile(nextProfile);
-    onOpenCreator?.(nextProfile);
   }
 
   function handleTouchStart(event, short) {
