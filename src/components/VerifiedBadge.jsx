@@ -5,6 +5,7 @@ export function VerifiedBadge({ verified, verificationStatus, size = 17, classNa
   if (!isVerified) return null;
 
   const s = Number(size) || 17;
+
   return (
     <span
       className={`verified-badge ${className}`.trim()}
@@ -14,22 +15,27 @@ export function VerifiedBadge({ verified, verificationStatus, size = 17, classNa
       style={{
         width: s,
         height: s,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flex: "0 0 auto",
-        flexShrink: 0,
-        verticalAlign: "middle",
+        display: "inline-block",
+        verticalAlign: "-3px",
         marginLeft: 4,
+        flex: `0 0 ${s}px`,
         lineHeight: 0,
-        color: "#1d9bf0",
-        position: "relative",
-        top: -1,
       }}
     >
       <svg viewBox="0 0 24 24" width={s} height={s} aria-hidden="true" style={{ display: "block" }}>
-        <path d="M12 1.75 14.15 3l2.48-.05 1.18 2.18 2.18 1.18-.05 2.48L21.25 11 20 13.15l.05 2.48-2.18 1.18-1.18 2.18-2.48-.05L12 20.25l-2.15-1.31-2.48.05-1.18-2.18-2.18-1.18.05-2.48L2.75 11l1.31-2.15-.05-2.48 2.18-1.18 1.18-2.18 2.48.05L12 1.75Z" fill="currentColor" />
-        <path d="m8.2 12.15 2.35 2.3 5.25-5.35" fill="none" stroke="white" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Solid blue social-platform verification badge: no white circle */}
+        <path
+          d="M12 1.4 14.55 3l2.99-.16 1.28 2.72 2.72 1.28-.16 2.99L23 12l-1.62 2.55.16 2.99-2.72 1.28-1.28 2.72-2.99-.16L12 22.6l-2.55-1.62-2.99.16-1.28-2.72-2.72-1.28.16-2.99L1 12l1.62-2.55-.16-2.99 2.72-1.28 1.28-2.72 2.99.16L12 1.4Z"
+          fill="#1DA1F2"
+        />
+        <path
+          d="m7.35 12.05 3.05 3.02 6.35-6.35"
+          fill="none"
+          stroke="#fff"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </span>
   );
