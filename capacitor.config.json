@@ -1,0 +1,8 @@
+{
+  "appId": "com.khaliphindustries.convogram",
+  "appName": "Convogram",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
