@@ -34,6 +34,7 @@ export async function getConversationDetails(conversationId) { const { data, err
 export async function getMessages(conversationId, limit = 100, userId = null) { const { data, error } = await supabase.from("messages").select(`*, profiles:sender_id(id, username, display_name, avatar_url), message_reactions(*)`).eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(limit); if (error) throw error; let readerId = userId; if (!readerId) { const { data: authData } = await supabase.auth.getUser(); readerId = authData?.user?.id || null; } if (readerId) await markConversationAsRead(conversationId, readerId); const messages = data || []; const replyIds = [...new Set(messages.map(message => message.reply_to_id).filter(Boolean))]; if (!replyIds.length) return messages; const { data: replyMessages, error: replyError } = await supabase.from("messages").select(`id, content, message_type, media_url, is_deleted, sender_id, created_at, profiles:sender_id(id, username, display_name, avatar_url)`).in("id", replyIds); if (replyError) throw replyError; const repliesById = new Map((replyMessages || []).map(message => [message.id, message])); return messages.map(message => ({ ...message, reply_to: message.reply_to_id ? repliesById.get(message.reply_to_id) || null : null })); }
 export async function sendMessage(conversationId, senderId, content, messageType = "text", mediaUrl = null, replyToId = null) { const { data, error } = await supabase.from("messages").insert([{ conversation_id: conversationId, sender_id: senderId, content: messageType === "text" ? content : null, message_type: messageType, media_url: mediaUrl, reply_to_id: replyToId || null }]).select(`*, profiles:sender_id(id, username, display_name, avatar_url)`).single(); if (error) throw error; if (replyToId) { const { data: reply } = await supabase.from("messages").select(`id, content, message_type, media_url, is_deleted, sender_id, created_at, profiles:sender_id(id, username, display_name, avatar_url)`).eq("id", replyToId).maybeSingle(); data.reply_to = reply || null; } return data; }
 export async function deleteMessage(messageId) { const { data, error } = await supabase.from("messages").update({ is_deleted: true, content: null, media_url: null, updated_at: new Date().toISOString() }).eq("id", messageId).select().single(); if (error) throw error; return data; }
+export async function deleteConversationForUser(conversationId, userId) { if (!conversationId || !userId) throw new Error("Unable to delete chat."); const { error } = await supabase.from("conversation_members").delete().eq("conversation_id", conversationId).eq("user_id", userId); if (error) throw error; }
 export function subscribeToConversation(conversationId, onInsert, onUpdate) { const channel = supabase.channel(`convogram-chat-${conversationId}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, payload => onInsert(payload.new)).on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, payload => onUpdate?.(payload.new)).subscribe(); return () => supabase.removeChannel(channel); }
 export async function markMessageAsRead(messageId, userId) { const { data, error } = await supabase.from("read_receipts").insert([{ message_id: messageId, user_id: userId }]).select().single(); if (error && error.code !== "23505") throw error; const { data: message } = await supabase.from("messages").select("conversation_id").eq("id", messageId).maybeSingle(); if (message?.conversation_id) await markConversationAsRead(message.conversation_id, userId); return data; }
 export async function markConversationAsRead(conversationId, userId) { if (!conversationId || !userId) return; const { error } = await supabase.from("conversation_members").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", conversationId).eq("user_id", userId); if (error) throw error; }
@@ -88,11 +89,78 @@ function installUnreadMessageIndicator() {
       });
     } catch (_) {} finally { painting = false; }
   };
+  const longPressState = { timer: null, item: null, fired: false };
+  const removeLongPressMenu = () => { const existing = document.querySelector(".convogram-chat-action-backdrop"); if (existing) existing.remove(); longPressState.item = null; longPressState.fired = false; };
+  const showChatActionMenu = item => {
+    const conversationId = item?.dataset?.conversationId;
+    if (!conversationId) return;
+    removeLongPressMenu();
+    const backdrop = document.createElement("div");
+    backdrop.className = "convogram-chat-action-backdrop";
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px;box-sizing:border-box;";
+    const sheet = document.createElement("div");
+    sheet.style.cssText = "width:min(440px,100%);background:var(--panel,#171717);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:8px;box-shadow:0 18px 60px rgba(0,0,0,.35);";
+    const title = document.createElement("div");
+    title.textContent = "Chat options";
+    title.style.cssText = "padding:12px 14px 10px;font-size:13px;font-weight:700;opacity:.65;";
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete chat";
+    deleteButton.style.cssText = "width:100%;border:0;background:transparent;color:#ed4956;text-align:left;padding:14px;border-radius:12px;font:inherit;font-weight:700;cursor:pointer;";
+    deleteButton.addEventListener("click", async event => {
+      event.stopPropagation();
+      const confirmed = window.confirm("Delete this chat from your messages?");
+      if (!confirmed) return;
+      deleteButton.disabled = true;
+      deleteButton.textContent = "Deleting…";
+      try {
+        await deleteConversationForUser(conversationId, userId);
+        item.remove();
+        removeLongPressMenu();
+        window.dispatchEvent(new CustomEvent("convogram-chat-deleted", { detail: { conversationId } }));
+      } catch (error) {
+        deleteButton.disabled = false;
+        deleteButton.textContent = "Delete chat";
+        window.alert(error?.message || "Could not delete chat.");
+      }
+    });
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.textContent = "Cancel";
+    cancelButton.style.cssText = "width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:14px;border-radius:12px;font:inherit;font-weight:600;cursor:pointer;";
+    cancelButton.addEventListener("click", removeLongPressMenu);
+    sheet.append(title, deleteButton, cancelButton);
+    backdrop.appendChild(sheet);
+    backdrop.addEventListener("click", event => { if (event.target === backdrop) removeLongPressMenu(); });
+    document.body.appendChild(backdrop);
+  };
+  const bindChatLongPress = () => {
+    document.querySelectorAll(".conversation-item").forEach(item => {
+      if (item.dataset.chatLongPressBound === "1") return;
+      item.dataset.chatLongPressBound = "1";
+      item.dataset.conversationId = item.getAttribute("data-conversation-id") || item.getAttribute("value") || item.dataset.id || item.closest("[data-conversation-id]")?.dataset.conversationId || "";
+      const start = event => {
+        if (event.button !== undefined && event.button !== 0) return;
+        longPressState.fired = false; longPressState.item = item; clearTimeout(longPressState.timer);
+        longPressState.timer = setTimeout(() => { longPressState.fired = true; if (navigator.vibrate) navigator.vibrate(20); showChatActionMenu(item); }, 550);
+      };
+      const cancel = () => clearTimeout(longPressState.timer);
+      item.addEventListener("pointerdown", start, { passive: true });
+      item.addEventListener("pointerup", event => { cancel(); if (longPressState.fired && longPressState.item === item) { event.preventDefault(); event.stopImmediatePropagation(); removeLongPressMenu(); } });
+      item.addEventListener("pointercancel", cancel);
+      item.addEventListener("pointerleave", cancel);
+      item.addEventListener("contextmenu", event => { event.preventDefault(); clearTimeout(longPressState.timer); longPressState.fired = true; showChatActionMenu(item); });
+      item.addEventListener("click", event => { if (longPressState.fired) { event.preventDefault(); event.stopImmediatePropagation(); longPressState.fired = false; } });
+    });
+  };
+  const observer = typeof MutationObserver !== "undefined" ? new MutationObserver(bindChatLongPress) : null;
+  if (observer) observer.observe(document.body, { childList: true, subtree: true });
+  bindChatLongPress();
   const start = async () => {
-    const { data } = await supabase.auth.getSession(); userId = data?.session?.user?.id || null; await paint(); if (timer) clearInterval(timer); timer = setInterval(paint, 2500);
+    const { data } = await supabase.auth.getSession(); userId = data?.session?.user?.id || null; await paint(); if (timer) clearInterval(timer); timer = setInterval(() => { paint(); bindChatLongPress(); }, 2500);
   };
   start();
   const auth = supabase.auth.onAuthStateChange((_event, session) => { userId = session?.user?.id || null; paint(); });
-  return () => { if (timer) clearInterval(timer); auth.data?.subscription?.unsubscribe(); };
+  return () => { if (timer) clearInterval(timer); auth.data?.subscription?.unsubscribe(); observer?.disconnect(); removeLongPressMenu(); };
 }
 if (typeof window !== "undefined") installUnreadMessageIndicator();
