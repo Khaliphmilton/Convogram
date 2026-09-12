@@ -1,41 +1,20 @@
 import React from 'react';
-import { createRoot } from 'react-dom/client';
-import { Heart, MessageCircle, Share2, MoreVertical, Loader } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreVertical, Loader, Send, X } from 'lucide-react';
 import { formatDistanceToNow } from '../lib/utils';
+import { getComments } from '../lib/posts';
 import './PostCard.css';
 
-let messagesMounted = false;
-if (typeof window !== 'undefined') {
-  const mountMessages = async () => {
-    const placeholder = document.querySelector('.feature-panel');
-    if (!placeholder || messagesMounted) return;
-    const userId = window.__convogramUserId;
-    if (!userId) return;
-    const { MessagesPanel } = await import('./MessagesPanel');
-    placeholder.innerHTML = '';
-    const root = createRoot(placeholder);
-    root.render(<MessagesPanel userId={userId} />);
-    messagesMounted = true;
-  };
-  const observer = new MutationObserver(() => mountMessages());
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  window.setTimeout(mountMessages, 0);
-}
-
 export function PostCard({ post, currentUserId, isLiked, onLike, onUnlike, onComment, onDelete, onFollowAuthor, isFollowing, likeCount = 0, commentCount = 0 }) {
-  const [showComments, setShowComments] = React.useState(false);
-  const [comment, setComment] = React.useState('');
-  const [submittingComment, setSubmittingComment] = React.useState(false);
-  const [liking, setLiking] = React.useState(false);
-  const isOwnPost = post.user_id === currentUserId;
-  const author = post.profiles;
-  const handleLikeClick = async () => { setLiking(true); try { if (isLiked) await onUnlike(); else await onLike(); } finally { setLiking(false); } };
-  const handleCommentSubmit = async (e) => { e.preventDefault(); if (!comment.trim()) return; setSubmittingComment(true); try { await onComment(comment.trim()); setComment(''); } finally { setSubmittingComment(false); } };
+  const [showComments,setShowComments]=React.useState(false),[comments,setComments]=React.useState([]),[comment,setComment]=React.useState(''),[submittingComment,setSubmittingComment]=React.useState(false),[loadingComments,setLoadingComments]=React.useState(false),[liking,setLiking]=React.useState(false);
+  const isOwnPost=post.user_id===currentUserId,author=post.profiles;
+  const openComments=async()=>{const next=!showComments;setShowComments(next);if(next){setLoadingComments(true);try{setComments((await getComments(post.id))||[]);}catch(e){console.error(e);}finally{setLoadingComments(false);}}};
+  const handleLikeClick=async()=>{setLiking(true);try{if(isLiked)await onUnlike();else await onLike();}finally{setLiking(false);}};
+  const handleCommentSubmit=async e=>{e.preventDefault();if(!comment.trim())return;setSubmittingComment(true);try{const created=await onComment(comment.trim());setComment('');if(created)setComments(x=>[...x,created]);else setComments((await getComments(post.id))||[]);}finally{setSubmittingComment(false);}};
   return <article className="post-card">
-    <div className="post-header"><img src={author?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${author?.username}`} alt={author?.display_name} className="post-avatar"/><div className="post-author-info"><div className="author-name">{author?.display_name}</div><div className="author-username">@{author?.username}</div></div>{!isOwnPost&&<button className={`follow-button ${isFollowing?'following':''}`} onClick={()=>onFollowAuthor?.()}>{isFollowing?'Following':'Follow'}</button>}{isOwnPost&&<button className="more-button" onClick={()=>{if(window.confirm('Delete this post?'))onDelete()}} title="Delete post"><MoreVertical size={20}/></button>}</div>
+    <div className="post-header"><img src={author?.avatar_url||`https://api.dicebear.com/7.x/avataaars/svg?seed=${author?.username}`} alt={author?.display_name} className="post-avatar"/><div className="post-author-info"><div className="author-name">{author?.display_name}</div><div className="author-username">@{author?.username}</div></div>{!isOwnPost&&<button className={`follow-button ${isFollowing?'following':''}`} onClick={()=>onFollowAuthor?.()}>{isFollowing?'Following':'Follow'}</button>}{isOwnPost&&<button className="more-button" onClick={()=>{if(window.confirm('Delete this post?'))onDelete()}}><MoreVertical size={20}/></button>}</div>
     {post.media_url&&post.media_type!=='text'&&<div className="post-media">{post.media_type==='image'?<img src={post.media_url} alt="Post"/>:post.media_type==='video'?<video controls><source src={post.media_url}/></video>:null}</div>}
     {post.caption&&<div className="post-caption">{post.caption}</div>}<div className="post-timestamp">{formatDistanceToNow(new Date(post.created_at))} ago</div>
-    <div className="post-actions"><button className={`action-button ${isLiked?'liked':''}`} onClick={handleLikeClick} disabled={liking}>{liking?<Loader size={18} className="spinning"/>:<Heart size={18} fill={isLiked?'currentColor':'none'}/>}<span>{likeCount}</span></button><button className="action-button" onClick={()=>setShowComments(!showComments)}><MessageCircle size={18}/><span>{commentCount}</span></button><button className="action-button"><Share2 size={18}/></button></div>
-    {showComments&&<div className="comments-section"><form onSubmit={handleCommentSubmit} className="comment-form"><input type="text" placeholder="Add a comment..." value={comment} onChange={e=>setComment(e.target.value)} disabled={submittingComment}/><button type="submit" disabled={submittingComment||!comment.trim()}>{submittingComment?<Loader size={16} className="spinning"/>:'Post'}</button></form></div>}
+    <div className="post-actions"><button className={`action-button ${isLiked?'liked':''}`} onClick={handleLikeClick} disabled={liking}>{liking?<Loader size={18}/>:<Heart size={18} fill={isLiked?'currentColor':'none'}/>}<span>{likeCount}</span></button><button className="action-button" onClick={openComments}><MessageCircle size={18}/><span>{commentCount}</span></button><button className="action-button"><Share2 size={18}/></button></div>
+    {showComments&&<div className="comments-section"><div className="comments-head"><b>Comments</b><button onClick={()=>setShowComments(false)}><X size={17}/></button></div><div className="comments-list">{loadingComments?<div className="comments-empty">Loading comments…</div>:comments.length?comments.map(c=><div className="comment-item" key={c.id}><img src={c.profiles?.avatar_url||`https://api.dicebear.com/7.x/avataaars/svg?seed=${c.profiles?.username||c.user_id}`} alt=""/><div><b>{c.profiles?.username||c.profiles?.display_name||'user'}</b><p>{c.content}</p><small>{formatDistanceToNow(new Date(c.created_at))} ago</small></div></div>):<div className="comments-empty">No comments yet. Be the first to comment.</div>}</div><form onSubmit={handleCommentSubmit} className="comment-form"><input type="text" placeholder="Add a comment..." value={comment} onChange={e=>setComment(e.target.value)} disabled={submittingComment}/><button type="submit" disabled={submittingComment||!comment.trim()}>{submittingComment?<Loader size={16}/>:<Send size={16}/>}</button></form></div>}
   </article>;
 }
