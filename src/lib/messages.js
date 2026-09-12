@@ -13,34 +13,12 @@ export async function getConversations(userId, limit = 50) {
 
 export async function getDirectConversation(userId, otherUserId) {
   if (!userId || !otherUserId || userId === otherUserId) return null;
-  const { data: mine, error: mineError } = await supabase
-    .from("conversation_members")
-    .select("conversation_id, joined_at, conversations(*)")
-    .eq("user_id", userId)
-    .order("joined_at", { ascending: false })
-    .limit(100);
-  if (mineError) throw mineError;
-  const directIds = (mine || [])
-    .filter((row) => row.conversations?.type === "direct")
-    .map((row) => row.conversation_id);
-  if (!directIds.length) return null;
-
-  const { data: theirs, error: theirsError } = await supabase
-    .from("conversation_members")
-    .select("conversation_id")
-    .in("conversation_id", directIds)
-    .eq("user_id", otherUserId);
-  if (theirsError) throw theirsError;
-  const match = (theirs || []).find((row) => directIds.includes(row.conversation_id));
-  if (!match) return null;
-
-  await supabase
-    .from("conversation_members")
-    .update({ joined_at: new Date().toISOString() })
-    .eq("conversation_id", match.conversation_id)
-    .eq("user_id", userId);
-
-  return (mine || []).find((row) => row.conversation_id === match.conversation_id)?.conversations || null;
+  const { data, error } = await supabase.rpc("find_direct_conversation", {
+    p_user_id: userId,
+    p_other_user_id: otherUserId,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] || null : data || null;
 }
 
 export async function getConversationDetails(conversationId) {
