@@ -45,8 +45,30 @@ export async function untagUser(postId, userId) {
 }
 
 export async function updateProfile(userId, changes) {
-  const { data, error } = await supabase.from("profiles").update({ ...changes, updated_at: new Date().toISOString() }).eq("id", userId).select().single();
+  if (!userId) throw new Error("You must be signed in to update your profile.");
+
+  const allowed = ["display_name", "username", "bio", "website", "avatar_url", "is_private"];
+  const payload = Object.fromEntries(Object.entries(changes || {}).filter(([key]) => allowed.includes(key)));
+  if (payload.username) payload.username = payload.username.trim().toLowerCase().replace(/\s+/g, "");
+  if (payload.website === "") payload.website = null;
+  if (!payload.display_name?.trim()) throw new Error("Display name is required.");
+  if (!payload.username || payload.username.length < 3) throw new Error("Username must be at least 3 characters.");
+  if (payload.website && !/^https?:\/\//i.test(payload.website)) throw new Error("Website must start with http:// or https://.");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", userId);
   if (error) throw error;
+
+  // Fetch the committed row again so the UI always receives the actual
+  // database value instead of a stale object from the form.
+  const { data, error: readError } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single();
+  if (readError) throw readError;
   return data;
 }
 
