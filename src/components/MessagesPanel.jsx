@@ -41,7 +41,6 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
       setConversations(clean);
       const pendingId = initialConversationId || consumePendingDirectConversationId();
       if (pendingId) setSelectedId(pendingId);
-      // Do not auto-open the first conversation. Messages opens to the chat list.
     } catch (err) {
       setError(err.message || "Unable to load conversations.");
     } finally {
@@ -52,25 +51,18 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
   async function loadConversation(id) {
     if (!id) return;
     try {
-      const [conversation, conversationMessages] = await Promise.all([
-        getConversationDetails(id),
-        getMessages(id, 100),
-      ]);
+      const [conversation, conversationMessages] = await Promise.all([getConversationDetails(id), getMessages(id, 100)]);
       setDetails(conversation);
       setMessages(conversationMessages || []);
       for (const message of conversationMessages || []) {
-        if (message.sender_id !== userId && !message.is_deleted) {
-          markMessageAsRead(message.id, userId).catch(() => {});
-        }
+        if (message.sender_id !== userId && !message.is_deleted) markMessageAsRead(message.id, userId).catch(() => {});
       }
     } catch (err) {
       setError(err.message || "Unable to open conversation.");
     }
   }
 
-  useEffect(() => {
-    if (userId) loadConversations();
-  }, [userId, initialConversationId]);
+  useEffect(() => { if (userId) loadConversations(); }, [userId, initialConversationId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -125,6 +117,19 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
     return "Direct conversation";
   }
 
+  function senderName(reply) {
+    return reply?.profiles?.display_name || reply?.profiles?.username || (reply?.sender_id === userId ? "You" : "Message");
+  }
+
+  function replyText(reply) {
+    if (!reply) return "";
+    if (reply.is_deleted) return "Message deleted";
+    if (reply.message_type === "image") return "Photo";
+    if (reply.message_type === "video") return "Video";
+    if (reply.message_type === "audio") return "Voice message";
+    return reply.content || "Attachment";
+  }
+
   async function updateTyping(value) {
     const channel = presenceChannelRef.current;
     if (channel) await channel.track({ userId, typing: value, online: true }).catch(() => {});
@@ -151,9 +156,7 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
       await updateTyping(false);
     } catch (err) {
       setError(err.message || "Message could not be sent.");
-    } finally {
-      setSending(false);
-    }
+    } finally { setSending(false); }
   }
 
   async function handleMedia(e) {
@@ -161,23 +164,18 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
     e.target.value = "";
     if (!file || !selectedId) return;
     setUploading(true);
-    setError("");
     try {
       const uploaded = await uploadMessageMedia(file, userId);
       const created = await sendMessage(selectedId, userId, "", uploaded.mediaType, uploaded.url, replyingTo?.id || null);
       setMessages(current => current.some(i => i.id === created.id) ? current : [...current, created]);
       setReplyingTo(null);
-    } catch (err) {
-      setError(err.message || "Media could not be sent.");
-    } finally {
-      setUploading(false);
-    }
+    } catch (err) { setError(err.message || "Media could not be sent."); }
+    finally { setUploading(false); }
   }
 
   async function startRecording() {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setError("Voice recording is not supported by this browser.");
-      return;
+      setError("Voice recording is not supported by this browser."); return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -196,18 +194,13 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
           const created = await sendMessage(selectedId, userId, "", "audio", uploaded.url, replyingTo?.id || null);
           setMessages(current => current.some(i => i.id === created.id) ? current : [...current, created]);
           setReplyingTo(null);
-        } catch (err) {
-          setError(err.message || "Voice note could not be sent.");
-        } finally {
-          setUploading(false);
-        }
+        } catch (err) { setError(err.message || "Voice note could not be sent."); }
+        finally { setUploading(false); }
       };
       recorderRef.current = recorder;
       recorder.start();
       setRecording(true);
-    } catch (err) {
-      setError(err.message || "Microphone permission was denied.");
-    }
+    } catch (err) { setError(err.message || "Microphone permission was denied."); }
   }
 
   function stopRecording() {
@@ -226,9 +219,7 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
         const created = await addMessageReaction(message.id, userId, reaction);
         setMessages(c => c.map(i => i.id === message.id ? { ...i, message_reactions: [...(i.message_reactions || []), created] } : i));
       }
-    } catch (err) {
-      setError(err.message || "Reaction could not be updated.");
-    }
+    } catch (err) { setError(err.message || "Reaction could not be updated."); }
     setReactionMessageId(null);
   }
 
@@ -240,9 +231,7 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
     }, LONG_PRESS_MS);
   }
 
-  function cancelLongPress() {
-    clearTimeout(longPressTimerRef.current);
-  }
+  function cancelLongPress() { clearTimeout(longPressTimerRef.current); }
 
   async function handleDelete(message) {
     if (message.sender_id !== userId) return;
@@ -250,9 +239,7 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
       await deleteMessage(message.id);
       setMessages(c => c.map(i => i.id === message.id ? { ...i, is_deleted: true, content: null, media_url: null } : i));
       setReactionMessageId(null);
-    } catch (err) {
-      setError(err.message || "Message could not be deleted.");
-    }
+    } catch (err) { setError(err.message || "Message could not be deleted."); }
   }
 
   async function handleCreateChat(e) {
@@ -265,83 +252,43 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
       setSelectedId(conversation.id);
       setNewChatOpen(false);
       setNewMemberId("");
-    } catch (err) {
-      setError(err.message || "Could not create chat.");
-    }
+    } catch (err) { setError(err.message || "Could not create chat."); }
   }
 
-  function selectConversation(id) {
-    setReactionMessageId(null);
-    setSelectedId(id);
-  }
-
-  function backToChats() {
-    setReactionMessageId(null);
-    setDetails(null);
-    setSelectedId(null);
-    if (onBack) onBack();
-  }
+  function selectConversation(id) { setReactionMessageId(null); setSelectedId(id); }
+  function backToChats() { setReactionMessageId(null); setReplyingTo(null); setDetails(null); setSelectedId(null); if (onBack) onBack(); }
 
   return <div className={`messages-panel ${selectedId && details ? "chat-open" : ""}`}>
     {error && <div className="messages-error">{error}<button onClick={() => setError("")}><X size={15} /></button></div>}
 
     {!selectedId && <aside className="conversation-list">
-      <div className="messages-list-head">
-        <div><h2>Messages</h2></div>
-        <button className="messages-icon-button" onClick={() => setNewChatOpen(true)} title="New chat"><Plus size={19} /></button>
-      </div>
+      <div className="messages-list-head"><div><h2>Messages</h2></div><button className="messages-icon-button" onClick={() => setNewChatOpen(true)} title="New chat"><Plus size={19} /></button></div>
       <div className="messages-search"><Search size={16} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search chats" /></div>
-      {loading ? <div className="messages-empty">Loading chats...</div> : filtered.length ? filtered.map(c => <button key={c.id} className="conversation-item" onClick={() => selectConversation(c.id)}>
-        <div className="conversation-avatar">{c.type === "group" ? <Users size={18} /> : <MessageCircle size={18} />}</div>
-        <div className="conversation-copy"><strong>{conversationTitle(c)}</strong><span>{c.type === "group" ? "Group" : "Private chat"}</span></div>
-      </button>) : <div className="messages-empty"><MessageCircle size={28} /><p>No chats yet.</p><button className="secondary-button" onClick={() => setNewChatOpen(true)}>Start a chat</button></div>}
+      {loading ? <div className="messages-empty">Loading chats...</div> : filtered.length ? filtered.map(c => <button key={c.id} className="conversation-item" onClick={() => selectConversation(c.id)}><div className="conversation-avatar">{c.type === "group" ? <Users size={18} /> : <MessageCircle size={18} />}</div><div className="conversation-copy"><strong>{conversationTitle(c)}</strong><span>{c.type === "group" ? "Group" : "Private chat"}</span></div></button>) : <div className="messages-empty"><MessageCircle size={28} /><p>No chats yet.</p><button className="secondary-button" onClick={() => setNewChatOpen(true)}>Start a chat</button></div>}
     </aside>}
 
     <section className="chat-window">
       {details ? <>
-        <header className="chat-head">
-          <button type="button" className="chat-back-button" onClick={backToChats} aria-label="Back to chats"><ChevronLeft size={20} /></button>
-          <div className="conversation-avatar"><MessageCircle size={18} /></div>
-          <div className="chat-head-copy"><strong>{conversationTitle(details)}</strong><span>{typingUsers.length ? "typing…" : details.type === "group" ? `${details.conversation_members?.length || 0} members` : "Online conversation"}</span></div>
-        </header>
-
+        <header className="chat-head"><button type="button" className="chat-back-button" onClick={backToChats} aria-label="Back to chats"><ChevronLeft size={20} /></button><div className="conversation-avatar"><MessageCircle size={18} /></div><div className="chat-head-copy"><strong>{conversationTitle(details)}</strong><span>{typingUsers.length ? "typing…" : details.type === "group" ? `${details.conversation_members?.length || 0} members` : "Online conversation"}</span></div></header>
         <div className="message-stream" onClick={() => reactionMessageId && setReactionMessageId(null)}>
           {messages.length ? messages.map(item => {
             const mine = item.sender_id === userId;
             const media = ["image", "video", "audio"].includes(item.message_type);
             const reactions = item.message_reactions || [];
             const reactionsOpen = reactionMessageId === item.id;
+            const quoted = item.reply_to;
             return <div key={item.id} className={`message-row ${mine ? "mine" : "theirs"}`}>
-              <div
-                className={`message-bubble ${reactionsOpen ? "reaction-active" : ""}`}
-                onPointerDown={() => startLongPress(item.id)}
-                onPointerUp={cancelLongPress}
-                onPointerCancel={cancelLongPress}
-                onPointerLeave={cancelLongPress}
-                onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }}
-                onClick={e => e.stopPropagation()}
-              >
-                {item.reply_to_id && <div className="message-reply-preview"><Reply size={12} /> Replying to a message</div>}
+              <div className={`message-bubble ${reactionsOpen ? "reaction-active" : ""}`} onPointerDown={() => startLongPress(item.id)} onPointerUp={cancelLongPress} onPointerCancel={cancelLongPress} onPointerLeave={cancelLongPress} onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }} onClick={e => e.stopPropagation()}>
+                {quoted && <div className="message-reply-preview"><div className="reply-preview-label"><Reply size={11} /> Replying to {senderName(quoted)}</div><div className="reply-preview-text">{replyText(quoted)}</div></div>}
                 {item.is_deleted ? <em>Message deleted</em> : media && item.media_url ? (item.message_type === "image" ? <img src={item.media_url} alt="Shared media" className="message-media" /> : item.message_type === "video" ? <video src={item.media_url} className="message-media" controls preload="metadata" /> : <audio src={item.media_url} controls className="message-audio" />) : <span className="message-text">{item.content || "Attachment"}</span>}
-
-                {reactionsOpen && !item.is_deleted && <div className="message-actions" onClick={e => e.stopPropagation()}>
-                  <div className="reaction-picker" aria-label="Message reactions">
-                    {REACTIONS.map(r => <button key={r} type="button" aria-label={`React ${r}`} onClick={() => toggleReaction(item, r)}>{r}</button>)}
-                  </div>
-                  <div className="message-tools">
-                    <button type="button" onClick={() => { setReplyingTo(item); setReactionMessageId(null); }} title="Reply"><Reply size={13} /></button>
-                    {mine && <button type="button" onClick={() => handleDelete(item)} title="Delete"><Trash2 size={13} /></button>}
-                  </div>
-                </div>}
-
+                {reactionsOpen && !item.is_deleted && <div className="message-actions" onClick={e => e.stopPropagation()}><div className="reaction-picker" aria-label="Message reactions">{REACTIONS.map(r => <button key={r} type="button" aria-label={`React ${r}`} onClick={() => toggleReaction(item, r)}>{r}</button>)}</div><div className="message-tools"><button type="button" onClick={() => { setReplyingTo(item); setReactionMessageId(null); }} title="Reply"><Reply size={13} /></button>{mine && <button type="button" onClick={() => handleDelete(item)} title="Delete"><Trash2 size={13} /></button>}</div></div>}
                 {reactions.length > 0 && <div className="message-reactions">{[...new Set(reactions.map(r => r.reaction))].map(r => <button key={r} type="button" onClick={() => toggleReaction(item, r)}>{r} {reactions.filter(x => x.reaction === r).length}</button>)}</div>}
                 <small>{new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{mine && <Check size={12} />}</small>
               </div>
             </div>;
           }) : <div className="chat-empty"><MessageCircle size={34} /><h3>Start the conversation</h3><p>Send a message to begin.</p></div>}
         </div>
-
-        {replyingTo && <div className="reply-banner"><Reply size={15} /><span>Replying to {replyingTo.content || "attachment"}</span><button type="button" onClick={() => setReplyingTo(null)}><X size={14} /></button></div>}
+        {replyingTo && <div className="reply-banner"><div className="reply-banner-copy"><strong>Replying to {senderName(replyingTo)}</strong><span>{replyText(replyingTo)}</span></div><button type="button" onClick={() => setReplyingTo(null)} aria-label="Cancel reply"><X size={14} /></button></div>}
         <form className="message-composer" onSubmit={handleSend}>
           <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={handleMedia} />
           <button type="button" className="messages-icon-button" onClick={() => fileRef.current?.click()} disabled={uploading || recording}><ImagePlus size={19} /></button>
