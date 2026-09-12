@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Bookmark, Camera, Grid3X3, Heart, MessageCircle, PlaySquare, Plus, Settings, Share2, Sparkles, Tag, UserPlus } from 'lucide-react';
 import { followUser, unfollowUser, isFollowing, getProfileStats, getProfile } from '../lib/profiles';
 import { getSavedPosts, getLikedPosts, getTaggedPosts, getSavedPostIds, savePost, unsavePost, updateProfile } from '../lib/profile_features';
