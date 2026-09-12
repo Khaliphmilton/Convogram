@@ -38,12 +38,29 @@ export async function getConversations(userId, limit = 50) {
 
 export async function getDirectConversation(userId, otherUserId) {
   if (!userId || !otherUserId || userId === otherUserId) return null;
-  const { data, error } = await supabase.rpc("find_direct_conversation", {
-    p_user_id: userId,
-    p_other_user_id: otherUserId,
-  });
-  if (error) throw error;
-  const conversation = Array.isArray(data) ? data[0] || null : data || null;
+
+  // Do not depend on a database RPC that may not exist in an existing project.
+  // Find a direct conversation by joining the current user's memberships with
+  // conversations and checking whether the other user is also a member.
+  const { data: mine, error: mineError } = await supabase
+    .from("conversation_members")
+    .select("conversation_id, conversations!inner(id, type, name, avatar_url, created_by, created_at, updated_at)")
+    .eq("user_id", userId)
+    .eq("conversations.type", "direct");
+  if (mineError) throw mineError;
+
+  const ids = (mine || []).map((row) => row.conversation_id).filter(Boolean);
+  if (!ids.length) return null;
+
+  const { data: theirs, error: theirsError } = await supabase
+    .from("conversation_members")
+    .select("conversation_id")
+    .eq("user_id", otherUserId)
+    .in("conversation_id", ids);
+  if (theirsError) throw theirsError;
+
+  const targetId = theirs?.[0]?.conversation_id;
+  const conversation = targetId ? (mine.find((row) => row.conversation_id === targetId)?.conversations || null) : null;
   rememberChat(conversation?.id);
   return conversation;
 }
@@ -111,11 +128,20 @@ export async function removeMessageReaction(messageId, userId, reaction) {
 }
 
 export async function createConversation(createdBy, type = "direct", name = null, avatarUrl = null, memberIds = []) {
+  if (!createdBy) throw new Error("You must be signed in to create a conversation.");
+  const allMembers = [...new Set([createdBy, ...memberIds].filter(Boolean))];
+  if (type === "direct" && allMembers.length !== 2) throw new Error("A direct conversation needs exactly two people.");
+
   const { data, error } = await supabase.from("conversations").insert([{ created_by: createdBy, type, name: name || null, avatar_url: avatarUrl || null }]).select().single();
   if (error) throw error;
-  const allMembers = [...new Set([createdBy, ...memberIds])];
+
   const { error: memberError } = await supabase.from("conversation_members").insert(allMembers.map((userId) => ({ conversation_id: data.id, user_id: userId, role: userId === createdBy ? "owner" : "member" })));
-  if (memberError) throw memberError;
+  if (memberError) {
+    // Avoid leaving an unusable empty conversation behind when membership creation fails.
+    try { await supabase.from("conversations").delete().eq("id", data.id); } catch {}
+    throw memberError;
+  }
+
   if (type === "direct") rememberChat(data.id);
   return data;
 }
