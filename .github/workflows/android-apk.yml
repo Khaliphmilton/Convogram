@@ -33,6 +33,12 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Install SVG converter
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
+
+      - name: Install Convogram Android launcher icon
+        run: node scripts/generate-android-icon.mjs
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
