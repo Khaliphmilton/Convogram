@@ -44,7 +44,7 @@ export async function createConversation(createdBy, type = "direct", name = null
 
 function installUnreadMessageIndicator() {
   if (typeof window === "undefined" || !supabase) return () => {};
-  let timer = null; let userId = null; let painting = false;
+  let timer = null; let userId = null; let painting = false; let latestConversations = [];
   const badgeClass = "convogram-unread-message-badge";
   const styleBadge = badge => { badge.style.cssText = "display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ed4956;color:#fff;font-size:11px;font-weight:800;line-height:20px;margin-left:auto;flex:0 0 auto;"; };
   const paintProfile = (node, profile, fallbackType) => {
@@ -74,7 +74,7 @@ function installUnreadMessageIndicator() {
   const paint = async () => {
     if (!userId || painting) return; painting = true;
     try {
-      const conversations = await getConversations(userId);
+      const conversations = await getConversations(userId); latestConversations = conversations;
       paintAvatars(conversations);
       const total = conversations.reduce((sum, item) => sum + (Number(item.unread_count) || 0), 0);
       document.querySelectorAll(`.${badgeClass}`).forEach(node => node.remove());
@@ -92,17 +92,19 @@ function installUnreadMessageIndicator() {
   const longPressState = { timer: null, item: null, fired: false };
   const removeLongPressMenu = () => { const existing = document.querySelector(".convogram-chat-action-backdrop"); if (existing) existing.remove(); longPressState.item = null; longPressState.fired = false; };
   const showChatActionMenu = item => {
-    const conversationId = item?.dataset?.conversationId;
+    const title = item?.querySelector(".conversation-copy strong")?.textContent?.trim() || "";
+    const conversationId = item?.dataset?.conversationId || latestConversations.find(c => (c._display_name || c.name || (c.type === "group" ? "Group conversation" : "Direct conversation")) === title)?.id;
     if (!conversationId) return;
+    item.dataset.conversationId = conversationId;
     removeLongPressMenu();
     const backdrop = document.createElement("div");
     backdrop.className = "convogram-chat-action-backdrop";
     backdrop.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px;box-sizing:border-box;";
     const sheet = document.createElement("div");
     sheet.style.cssText = "width:min(440px,100%);background:var(--panel,#171717);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:8px;box-shadow:0 18px 60px rgba(0,0,0,.35);";
-    const title = document.createElement("div");
-    title.textContent = "Chat options";
-    title.style.cssText = "padding:12px 14px 10px;font-size:13px;font-weight:700;opacity:.65;";
+    const titleNode = document.createElement("div");
+    titleNode.textContent = "Chat options";
+    titleNode.style.cssText = "padding:12px 14px 10px;font-size:13px;font-weight:700;opacity:.65;";
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.textContent = "Delete chat";
@@ -129,7 +131,7 @@ function installUnreadMessageIndicator() {
     cancelButton.textContent = "Cancel";
     cancelButton.style.cssText = "width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:14px;border-radius:12px;font:inherit;font-weight:600;cursor:pointer;";
     cancelButton.addEventListener("click", removeLongPressMenu);
-    sheet.append(title, deleteButton, cancelButton);
+    sheet.append(titleNode, deleteButton, cancelButton);
     backdrop.appendChild(sheet);
     backdrop.addEventListener("click", event => { if (event.target === backdrop) removeLongPressMenu(); });
     document.body.appendChild(backdrop);
@@ -138,7 +140,8 @@ function installUnreadMessageIndicator() {
     document.querySelectorAll(".conversation-item").forEach(item => {
       if (item.dataset.chatLongPressBound === "1") return;
       item.dataset.chatLongPressBound = "1";
-      item.dataset.conversationId = item.getAttribute("data-conversation-id") || item.getAttribute("value") || item.dataset.id || item.closest("[data-conversation-id]")?.dataset.conversationId || "";
+      const title = item.querySelector(".conversation-copy strong")?.textContent?.trim() || "";
+      item.dataset.conversationId = item.getAttribute("data-conversation-id") || item.getAttribute("value") || item.dataset.id || latestConversations.find(c => (c._display_name || c.name || (c.type === "group" ? "Group conversation" : "Direct conversation")) === title)?.id || "";
       const start = event => {
         if (event.button !== undefined && event.button !== 0) return;
         longPressState.fired = false; longPressState.item = item; clearTimeout(longPressState.timer);
