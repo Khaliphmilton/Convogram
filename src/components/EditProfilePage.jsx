@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera, Check, Save } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { uploadProfileAvatar } from "../lib/storage";
 import { updateProfile } from "../lib/profile_features";
 
 export function EditProfilePage({ profile, userId, onBack, onProfileUpdated }) {
@@ -26,13 +26,10 @@ export function EditProfilePage({ profile, userId, onBack, onProfileUpdated }) {
     if (file.size > 5 * 1024 * 1024) return setMessage("Profile photos must be 5 MB or smaller.");
     setAvatarSaving(true); setMessage("");
     try {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-      const path = `${userId}/avatar-${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
-      if (error) throw error;
-      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-      const updated = await updateProfile(userId, { avatar_url: data.publicUrl });
-      onProfileUpdated?.(updated); setMessage("Profile photo updated.");
+      const avatarUrl = await uploadProfileAvatar(file, userId);
+      const updated = await updateProfile(userId, { avatar_url: avatarUrl });
+      onProfileUpdated?.(updated);
+      setMessage("Profile photo updated.");
     } catch (err) { setMessage(err.message || "Could not update profile photo."); }
     finally { setAvatarSaving(false); }
   }
