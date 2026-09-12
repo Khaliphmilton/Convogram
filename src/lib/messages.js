@@ -12,7 +12,7 @@ export async function getConversations(userId, limit = 50) {
   const ids = rows.map(row => row.conversation_id).filter(Boolean);
   const otherProfiles = new Map();
   if (ids.length) {
-    const { data: members, error: memberError } = await supabase.from("conversation_members").select(`conversation_id, user_id, profiles:user_id(id, username, display_name, display_name, avatar_url, is_verified)`).in("conversation_id", ids).neq("user_id", userId);
+    const { data: members, error: memberError } = await supabase.from("conversation_members").select(`conversation_id, user_id, profiles:user_id(id, username, display_name, avatar_url, is_verified)`).in("conversation_id", ids).neq("user_id", userId);
     if (memberError) throw memberError;
     for (const member of members || []) if (member.profiles) otherProfiles.set(member.conversation_id, member.profiles);
   }
@@ -46,10 +46,33 @@ function installUnreadMessageIndicator() {
   let timer = null; let observer = null; let userId = null; let painting = false;
   const badgeClass = "convogram-unread-message-badge";
   const styleBadge = badge => { badge.style.cssText = "display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ed4956;color:#fff;font-size:11px;font-weight:800;line-height:20px;margin-left:auto;flex:0 0 auto;"; };
+  const paintProfile = (node, profile, fallbackType) => {
+    if (!node) return;
+    node.replaceChildren();
+    const avatarUrl = profile?.avatar_url;
+    if (avatarUrl) {
+      const img = document.createElement("img"); img.src = avatarUrl; img.alt = ""; img.className = "convogram-chat-avatar-image"; img.loading = "lazy"; img.decoding = "async"; node.appendChild(img);
+    } else {
+      const icon = document.createElement("span"); icon.className = "convogram-chat-avatar-fallback"; icon.textContent = fallbackType === "group" ? "" : String(profile?.display_name || profile?.username || "?").trim().slice(0, 1).toUpperCase(); node.appendChild(icon);
+    }
+    if (profile?.is_verified) { const badge = document.createElement("span"); badge.className = "convogram-verified-badge"; badge.textContent = "✓"; badge.setAttribute("aria-label", "Verified"); node.appendChild(badge); }
+  };
+  const paintAvatars = conversations => {
+    const byTitle = new Map(conversations.map(c => [c._display_name || c.name || (c.type === "group" ? "Group conversation" : "Direct conversation"), c]));
+    document.querySelectorAll(".conversation-item").forEach(item => {
+      const title = item.querySelector(".conversation-copy strong")?.textContent?.trim() || "";
+      const conversation = byTitle.get(title); if (!conversation) return;
+      paintProfile(item.querySelector(".conversation-avatar"), conversation.type === "direct" ? conversation._direct_profile : (conversation.avatar_url ? { avatar_url: conversation.avatar_url } : null), conversation.type);
+    });
+    const chatTitle = document.querySelector(".chat-head-copy strong")?.textContent?.trim() || "";
+    const active = byTitle.get(chatTitle);
+    if (active) paintProfile(document.querySelector(".chat-head .conversation-avatar"), active.type === "direct" ? active._direct_profile : (active.avatar_url ? { avatar_url: active.avatar_url } : null), active.type);
+  };
   const paint = async () => {
     if (!userId || painting) return; painting = true;
     try {
       const conversations = await getConversations(userId);
+      paintAvatars(conversations);
       const total = conversations.reduce((sum, item) => sum + (Number(item.unread_count) || 0), 0);
       document.querySelectorAll(`.${badgeClass}`).forEach(node => node.remove());
       [...document.querySelectorAll("button")].filter(button => button.textContent?.trim().startsWith("Messages")).forEach(button => { if (total > 0) { const badge = document.createElement("span"); badge.className = badgeClass; badge.textContent = total > 99 ? "99+" : String(total); badge.setAttribute("aria-label", `${total} unread messages`); styleBadge(badge); button.appendChild(badge); } });
