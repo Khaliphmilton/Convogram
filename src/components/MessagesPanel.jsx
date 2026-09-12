@@ -34,13 +34,25 @@ function VoiceNote({ src }) {
 
 export function MessagesPanel({ userId, initialConversationId = null, onBack }) {
   const [conversations, setConversations] = useState([]); const [selectedId, setSelectedId] = useState(null); const [details, setDetails] = useState(null); const [messages, setMessages] = useState([]); const [draft, setDraft] = useState(""); const [search, setSearch] = useState(""); const [loading, setLoading] = useState(true); const [sending, setSending] = useState(false); const [uploading, setUploading] = useState(false); const [recording, setRecording] = useState(false); const [error, setError] = useState(""); const [typingUsers, setTypingUsers] = useState([]); const [replyingTo, setReplyingTo] = useState(null); const [newChatOpen, setNewChatOpen] = useState(false); const [newMemberId, setNewMemberId] = useState(""); const [reactionMessageId, setReactionMessageId] = useState(null);
-  const fileRef = useRef(null); const recorderRef = useRef(null); const chunksRef = useRef([]); const typingTimerRef = useRef(null); const presenceChannelRef = useRef(null); const longPressTimerRef = useRef(null); const messageStreamRef = useRef(null);
+  const fileRef = useRef(null); const recorderRef = useRef(null); const chunksRef = useRef([]); const typingTimerRef = useRef(null); const presenceChannelRef = useRef(null); const longPressTimerRef = useRef(null); const messageStreamRef = useRef(null); const chatHistoryRef = useRef(false);
   async function loadConversations() { try { setLoading(true); const data = await getConversations(userId); const clean = (data || []).filter(Boolean); setConversations(clean); const pendingId = initialConversationId || consumePendingDirectConversationId(); if (pendingId) setSelectedId(pendingId); } catch (err) { setError(err.message || "Unable to load conversations."); } finally { setLoading(false); } }
   async function refreshConversations() { if (!userId) return; try { const data = await getConversations(userId); setConversations((data || []).filter(Boolean)); } catch (_) {} }
   async function loadConversation(id) { if (!id) return; setDetails(null); setMessages([]); try { const [conversation, conversationMessages] = await Promise.all([getConversationDetails(id), getMessages(id, 100)]); const orderedMessages = [...(conversationMessages || [])].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()); setDetails(conversation); setMessages(orderedMessages); for (const message of orderedMessages) if (message.sender_id !== userId && !message.is_deleted) markMessageAsRead(message.id, userId).catch(() => {}); } catch (err) { setError(err.message || "Unable to open conversation."); } }
   useEffect(() => { if (userId) loadConversations(); }, [userId, initialConversationId]);
   useEffect(() => { if (!userId) return undefined; const timer = setInterval(refreshConversations, 2500); return () => clearInterval(timer); }, [userId]);
   useEffect(() => { if (!selectedId) { setDetails(null); setMessages([]); setReactionMessageId(null); return; } loadConversation(selectedId); }, [selectedId]);
+  useEffect(() => {
+    if (!selectedId) return undefined;
+    if (!chatHistoryRef.current) { window.history.pushState({ convogram: true, page: "messages", chat: selectedId }, "", window.location.href); chatHistoryRef.current = true; }
+    const handlePhoneBack = () => {
+      if (!chatHistoryRef.current) return false;
+      chatHistoryRef.current = false;
+      setReactionMessageId(null); setReplyingTo(null); setDetails(null); setMessages([]); setSelectedId(null);
+      return true;
+    };
+    window.__convogramChatBack = handlePhoneBack;
+    return () => { if (window.__convogramChatBack === handlePhoneBack) delete window.__convogramChatBack; };
+  }, [selectedId]);
   useEffect(() => { if (!selectedId) return; return subscribeToConversation(selectedId, incoming => { setMessages(current => current.some(i => i.id === incoming.id) ? current : [...current, incoming].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())); setConversations(current => current.map(c => c.id === selectedId ? { ...c, last_message_at: incoming.created_at, updated_at: incoming.created_at } : c)); if (incoming.sender_id !== userId) markMessageAsRead(incoming.id, userId).catch(() => {}); }, updated => setMessages(current => current.map(i => i.id === updated.id ? { ...i, ...updated } : i))); }, [selectedId, userId]);
   useEffect(() => { const el = messageStreamRef.current; if (!el || !selectedId || !details) return; const frame = requestAnimationFrame(() => { el.scrollTo({ top: el.scrollHeight, behavior: "auto" }); }); return () => cancelAnimationFrame(frame); }, [selectedId, details]);
   useEffect(() => { const el = messageStreamRef.current; if (!el || !selectedId || !messages.length) return; const frame = requestAnimationFrame(() => { el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }); return () => cancelAnimationFrame(frame); }, [messages.length, selectedId]);
@@ -65,7 +77,7 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
   async function handleDelete(message) { if (message.sender_id !== userId) return; try { await deleteMessage(message.id); setMessages(c => c.map(i => i.id === message.id ? { ...i, is_deleted: true, content: null, media_url: null } : i)); setReactionMessageId(null); } catch (err) { setError(err.message || "Message could not be deleted."); } }
   async function handleCreateChat(e) { e.preventDefault(); const memberId = newMemberId.trim(); if (!memberId || memberId === userId) return; try { const conversation = await createConversation(userId, "direct", null, null, [memberId]); setConversations(c => [conversation, ...c]); setSelectedId(null); setNewChatOpen(false); setNewMemberId(""); } catch (err) { setError(err.message || "Could not create chat."); } }
   function selectConversation(id) { setReactionMessageId(null); setSelectedId(id); }
-  function backToChats() { setReactionMessageId(null); setReplyingTo(null); setDetails(null); setMessages([]); setSelectedId(null); }
+  function backToChats() { setReactionMessageId(null); setReplyingTo(null); setDetails(null); setMessages([]); if (chatHistoryRef.current) { window.history.back(); return; } setSelectedId(null); }
 
   const hasConversations = conversations.length > 0;
 
