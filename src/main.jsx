@@ -1,20 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Bell,
-  Camera,
-  Compass,
-  Home,
-  MessageCircle,
-  Plus,
-  Search,
-  Settings,
-  Sparkles,
-  User,
-  Users,
-  X,
-  Zap,
-  SlidersHorizontal,
+  Bell, Camera, Compass, Home, MessageCircle, Plus, Search, Settings, Sparkles, User, Users, X, Zap, SlidersHorizontal,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { getFeed, createPost, deletePost, likePost, unlikePost, addComment, isPostLikedByUser } from "./lib/posts";
@@ -51,184 +38,29 @@ function App() {
   const ignoreNextPopRef = useRef(false);
   const notificationsHistoryRef = useRef(false);
 
-  function setActive(nextPage) {
-    if (!nextPage || nextPage === activeRef.current) return;
-    navigationStackRef.current.push(activeRef.current);
-    activeRef.current = nextPage;
-    setActiveState(nextPage);
-    window.history.pushState({ convogram: true, page: nextPage }, "", window.location.href);
-  }
+  function setActive(nextPage) { if (!nextPage || nextPage === activeRef.current) return; navigationStackRef.current.push(activeRef.current); activeRef.current = nextPage; setActiveState(nextPage); window.history.pushState({ convogram: true, page: nextPage }, "", window.location.href); }
+  function goBack() { const previousPage = navigationStackRef.current.pop(); if (!previousPage) { window.history.pushState({ convogram: true, root: true }, "", window.location.href); return; } activeRef.current = previousPage; setActiveState(previousPage); ignoreNextPopRef.current = true; window.history.back(); }
+  function openNotifications() { if (notificationsHistoryRef.current) return; notificationsHistoryRef.current = true; setNotifications(true); window.history.pushState({ convogram: true, overlay: "notifications" }, "", window.location.href); }
+  function closeNotifications() { if (!notificationsHistoryRef.current) { setNotifications(false); return; } window.history.back(); }
 
-  function goBack() {
-    const previousPage = navigationStackRef.current.pop();
-    if (!previousPage) {
-      window.history.pushState({ convogram: true, root: true }, "", window.location.href);
-      return;
-    }
-    activeRef.current = previousPage;
-    setActiveState(previousPage);
-    ignoreNextPopRef.current = true;
-    window.history.back();
-  }
+  useEffect(() => { window.history.replaceState({ convogram: true, root: true }, "", window.location.href); window.history.pushState({ convogram: true, root: true }, "", window.location.href); const handlePopState = () => { if (notificationsHistoryRef.current) { notificationsHistoryRef.current = false; setNotifications(false); return; } if (ignoreNextPopRef.current) { ignoreNextPopRef.current = false; return; } const previousPage = navigationStackRef.current.pop(); if (previousPage) { activeRef.current = previousPage; setActiveState(previousPage); } else window.history.pushState({ convogram: true, root: true }, "", window.location.href); }; window.addEventListener("popstate", handlePopState); return () => window.removeEventListener("popstate", handlePopState); }, []);
 
-  function openNotifications() {
-    if (notificationsHistoryRef.current) return;
-    notificationsHistoryRef.current = true;
-    setNotifications(true);
-    window.history.pushState({ convogram: true, overlay: "notifications" }, "", window.location.href);
-  }
+  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [username, setUsername] = useState(""); const [displayName, setDisplayName] = useState(""); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [posts, setPosts] = useState([]); const [moments, setMoments] = useState([]); const [shorts, setShorts] = useState([]); const [liked, setLiked] = useState({}); const [loadingFeed, setLoadingFeed] = useState(false); const [composer, setComposer] = useState(null); const [caption, setCaption] = useState(""); const [file, setFile] = useState(null); const [publishing, setPublishing] = useState(false); const [notifications, setNotifications] = useState(false); const [featureSuite, setFeatureSuite] = useState(false); const [unread, setUnread] = useState(0); const [stats, setStats] = useState({ postsCount: 0, followersCount: 0, followingCount: 0 });
 
-  function closeNotifications() {
-    if (!notificationsHistoryRef.current) {
-      setNotifications(false);
-      return;
-    }
-    window.history.back();
-  }
+  async function loadProfile(id) { if (!supabase || !id) return; const { data } = await supabase.from("profiles").select("*").eq("id", id).single(); if (data) setProfile(data); }
+  async function refresh() { if (!session?.user?.id || !supabase) return; setLoadingFeed(true); setError(""); try { const [feed, ms, ps, nu] = await Promise.all([getFeed(40), getMomentsForFeed(session.user.id, 30), getProfileStats(session.user.id), getUnreadNotificationsCount(session.user.id)]); setPosts(feed || []); setMoments(ms || []); if (ps) setStats(ps); setUnread(nu || 0); const map = {}; await Promise.all((feed || []).map(async (post) => { map[post.id] = await isPostLikedByUser(post.id, session.user.id); })); setLiked(map); } catch (e) { setError(e.message || "Could not load Convogram."); } finally { setLoadingFeed(false); } }
+  async function loadShorts() { try { setShorts((await getShortsForDiscover(30, 0)) || []); } catch (e) { setError(e.message || "Could not load Shorts."); } }
 
-  useEffect(() => {
-    window.history.replaceState({ convogram: true, root: true }, "", window.location.href);
-    window.history.pushState({ convogram: true, root: true }, "", window.location.href);
-    const handlePopState = () => {
-      if (notificationsHistoryRef.current) {
-        notificationsHistoryRef.current = false;
-        setNotifications(false);
-        return;
-      }
-      if (ignoreNextPopRef.current) {
-        ignoreNextPopRef.current = false;
-        return;
-      }
-      const previousPage = navigationStackRef.current.pop();
-      if (previousPage) {
-        activeRef.current = previousPage;
-        setActiveState(previousPage);
-      } else {
-        window.history.pushState({ convogram: true, root: true }, "", window.location.href);
-      }
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  useEffect(() => { let alive = true; let subscription; async function boot() { if (!supabase) { setError("Supabase is not configured."); setBooting(false); return; } const { data } = await supabase.auth.getSession(); if (!alive) return; setSession(data.session); if (data.session) { setEmail(data.session.user.email || ""); await loadProfile(data.session.user.id); } setBooting(false); } boot(); if (supabase) { const auth = supabase.auth.onAuthStateChange(async (_event, next) => { setSession(next); setEmail(next?.user?.email || ""); if (next) await loadProfile(next.user.id); else setProfile(null); }); subscription = auth.data?.subscription; } return () => { alive = false; subscription?.unsubscribe(); }; }, []);
+  useEffect(() => { if (session?.user?.id) refresh(); }, [session?.user?.id]); useEffect(() => { if (active === "shorts" && session?.user?.id) loadShorts(); }, [active, session?.user?.id]);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [posts, setPosts] = useState([]);
-  const [moments, setMoments] = useState([]);
-  const [shorts, setShorts] = useState([]);
-  const [liked, setLiked] = useState({});
-  const [loadingFeed, setLoadingFeed] = useState(false);
-  const [composer, setComposer] = useState(null);
-  const [caption, setCaption] = useState("");
-  const [file, setFile] = useState(null);
-  const [publishing, setPublishing] = useState(false);
-  const [notifications, setNotifications] = useState(false);
-  const [featureSuite, setFeatureSuite] = useState(false);
-  const [unread, setUnread] = useState(0);
-  const [stats, setStats] = useState({ postsCount: 0, followersCount: 0, followingCount: 0 });
-
-  async function loadProfile(id) {
-    if (!supabase || !id) return;
-    const { data } = await supabase.from("profiles").select("*").eq("id", id).single();
-    if (data) setProfile(data);
-  }
-
-  async function refresh() {
-    if (!session?.user?.id || !supabase) return;
-    setLoadingFeed(true); setError("");
-    try {
-      const [feed, ms, ps, nu] = await Promise.all([getFeed(40), getMomentsForFeed(session.user.id, 30), getProfileStats(session.user.id), getUnreadNotificationsCount(session.user.id)]);
-      setPosts(feed || []); setMoments(ms || []); if (ps) setStats(ps); setUnread(nu || 0);
-      const map = {};
-      await Promise.all((feed || []).map(async (post) => { map[post.id] = await isPostLikedByUser(post.id, session.user.id); }));
-      setLiked(map);
-    } catch (e) { setError(e.message || "Could not load Convogram."); }
-    finally { setLoadingFeed(false); }
-  }
-
-  async function loadShorts() {
-    try { setShorts((await getShortsForDiscover(30, 0)) || []); }
-    catch (e) { setError(e.message || "Could not load Shorts."); }
-  }
-
-  useEffect(() => {
-    let alive = true; let subscription;
-    async function boot() {
-      if (!supabase) { setError("Supabase is not configured."); setBooting(false); return; }
-      const { data } = await supabase.auth.getSession();
-      if (!alive) return;
-      setSession(data.session); if (data.session) await loadProfile(data.session.user.id); setBooting(false);
-    }
-    boot();
-    if (supabase) {
-      const auth = supabase.auth.onAuthStateChange(async (_event, next) => { setSession(next); if (next) await loadProfile(next.user.id); else setProfile(null); });
-      subscription = auth.data?.subscription;
-    }
-    return () => { alive = false; subscription?.unsubscribe(); };
-  }, []);
-
-  useEffect(() => { if (session?.user?.id) refresh(); }, [session?.user?.id]);
-  useEffect(() => { if (active === "shorts" && session?.user?.id) loadShorts(); }, [active, session?.user?.id]);
-
-  async function authenticate(event) {
-    event.preventDefault(); setError(""); setNotice("");
-    if (!email || !password) { setError("Enter your email and password."); return; }
-    if (authMode === "login") {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) setError(authError.message); return;
-    }
-    if (!username.trim() || !displayName.trim()) { setError("Enter your name and username."); return; }
-    const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { username: username.trim().toLowerCase(), display_name: displayName.trim() } } });
-    if (authError) setError(authError.message); else if (!data.session) setNotice("Account created. Check your email to confirm your account.");
-  }
-
-  async function logout() {
-    if (supabase) await supabase.auth.signOut();
-    setActive("home"); setPosts([]); setMoments([]); setProfile(null);
-  }
-  function openComposer(type) { setComposer(type); setCaption(""); setFile(null); }
-  function closeComposer() { setComposer(null); setCaption(""); setFile(null); }
-
-  async function publish() {
-    if (!session?.user?.id || (!caption.trim() && !file)) return;
-    setPublishing(true); setError("");
-    try {
-      if (composer === "post") {
-        let url = null; let type = "text";
-        if (file) { const uploaded = await uploadPostMedia(file, session.user.id); url = uploaded.url; type = uploaded.mediaType; }
-        const created = await createPost(session.user.id, caption.trim(), url, type);
-        setPosts((current) => [{ ...created, profiles: profile, likes: [{ count: 0 }], comments: [{ count: 0 }] }, ...current]);
-      } else {
-        if (!file) throw new Error("Choose a photo or video for a Moment.");
-        const uploaded = await uploadMomentMedia(file, session.user.id);
-        const created = await createMoment(session.user.id, uploaded.url, uploaded.mediaType, caption.trim());
-        setMoments((current) => [{ ...created, profiles: profile, moment_views: [{ count: 0 }], moment_likes: [{ count: 0 }] }, ...current]);
-      }
-      closeComposer(); const nextStats = await getProfileStats(session.user.id); if (nextStats) setStats(nextStats);
-    } catch (e) { setError(e.message || "Publishing failed."); }
-    finally { setPublishing(false); }
-  }
-
-  async function toggleLike(post) {
-    try {
-      const wasLiked = !!liked[post.id];
-      if (wasLiked) await unlikePost(post.id, session.user.id); else await likePost(post.id, session.user.id);
-      setLiked((current) => ({ ...current, [post.id]: !wasLiked }));
-      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, likes: [{ count: Math.max(0, (item.likes?.[0]?.count || 0) + (wasLiked ? -1 : 1)) }] } : item));
-    } catch (e) { setError(e.message || "Could not update like."); }
-  }
-  async function comment(post, text) {
-    try { const created = await addComment(post.id, session.user.id, text); setPosts((current) => current.map((item) => item.id === post.id ? { ...item, comments: [{ count: (item.comments?.[0]?.count || 0) + 1 }] } : item)); return created; }
-    catch (e) { setError(e.message || "Could not add comment."); throw e; }
-  }
-  async function removePost(post) {
-    try { await deletePost(post.id); setPosts((current) => current.filter((item) => item.id !== post.id)); }
-    catch (e) { setError(e.message || "Could not delete post."); }
-  }
+  async function authenticate(event) { event.preventDefault(); setError(""); setNotice(""); if (!email || !password) { setError("Enter your email and password."); return; } if (authMode === "login") { const { error: authError } = await supabase.auth.signInWithPassword({ email, password }); if (authError) setError(authError.message); return; } if (!username.trim() || !displayName.trim()) { setError("Enter your name and username."); return; } const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { username: username.trim().toLowerCase(), display_name: displayName.trim() } } }); if (authError) setError(authError.message); else if (!data.session) setNotice("Account created. Check your email to confirm your account."); }
+  async function logout() { if (supabase) await supabase.auth.signOut(); setActive("home"); setPosts([]); setMoments([]); setProfile(null); }
+  function openComposer(type) { setComposer(type); setCaption(""); setFile(null); } function closeComposer() { setComposer(null); setCaption(""); setFile(null); }
+  async function publish() { if (!session?.user?.id || (!caption.trim() && !file)) return; setPublishing(true); setError(""); try { if (composer === "post") { let url = null; let type = "text"; if (file) { const uploaded = await uploadPostMedia(file, session.user.id); url = uploaded.url; type = uploaded.mediaType; } const created = await createPost(session.user.id, caption.trim(), url, type); setPosts((current) => [{ ...created, profiles: profile, likes: [{ count: 0 }], comments: [{ count: 0 }] }, ...current]); } else { if (!file) throw new Error("Choose a photo or video for a Moment."); const uploaded = await uploadMomentMedia(file, session.user.id); const created = await createMoment(session.user.id, uploaded.url, uploaded.mediaType, caption.trim()); setMoments((current) => [{ ...created, profiles: profile, moment_views: [{ count: 0 }], moment_likes: [{ count: 0 }] }, ...current); } closeComposer(); const nextStats = await getProfileStats(session.user.id); if (nextStats) setStats(nextStats); } catch (e) { setError(e.message || "Publishing failed."); } finally { setPublishing(false); } }
+  async function toggleLike(post) { try { const wasLiked = !!liked[post.id]; if (wasLiked) await unlikePost(post.id, session.user.id); else await likePost(post.id, session.user.id); setLiked((current) => ({ ...current, [post.id]: !wasLiked })); setPosts((current) => current.map((item) => item.id === post.id ? { ...item, likes: [{ count: Math.max(0, (item.likes?.[0]?.count || 0) + (wasLiked ? -1 : 1)) }] } : item)); } catch (e) { setError(e.message || "Could not update like."); } }
+  async function comment(post, text) { try { const created = await addComment(post.id, session.user.id, text); setPosts((current) => current.map((item) => item.id === post.id ? { ...item, comments: [{ count: (item.comments?.[0]?.count || 0) + 1 }] } : item)); return created; } catch (e) { setError(e.message || "Could not add comment."); throw e; } }
+  async function removePost(post) { try { await deletePost(post.id); setPosts((current) => current.filter((item) => item.id !== post.id)); } catch (e) { setError(e.message || "Could not delete post."); } }
 
   if (booting) return <div className="boot"><div className="brand-mark">C</div><h1>Convogram</h1><p>Loading your social world…</p></div>;
   if (!session) return <div className="auth"><div className="auth-card"><div className="brand-row"><div className="brand-mark">C</div><div><b>Convogram</b><span>Everything social, together.</span></div></div><div className="auth-copy"><small>THE SOCIAL SUPERAPP</small><h1>{authMode === "login" ? "Welcome back." : "Create your Convogram."}</h1><p>Post, chat, call, discover Shorts, follow people and build communities from one account.</p></div><form onSubmit={authenticate}>{authMode === "signup" && <><label>Display name<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" /></label><label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username" /></label></>}<label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" /></label>{error && <div className="alert error">{error}</div>}{notice && <div className="alert">{notice}</div>}<button className="primary">{authMode === "login" ? "Log in" : "Create account"}</button></form><button className="switch" onClick={() => setAuthMode((mode) => mode === "login" ? "signup" : "login")}>{authMode === "login" ? "New to Convogram? Create an account" : "Already have an account? Log in"}</button></div></div>;
@@ -246,7 +78,7 @@ function App() {
         {active === "communities" && <section className="page"><CommunitiesPanel userId={session.user.id} /></section>}
         {active === "profile" && <ProfilePanel userId={session.user.id} profile={profile} stats={stats} onCreatePost={() => openComposer("post")} onCreateMoment={() => openComposer("moment")} onMessage={() => setActive("messages")} onEdit={() => setActive("profile-options")} onProfileUpdated={setProfile} />}
         {active === "profile-options" && <ProfileOptionsPage profile={profile} onBack={goBack} onEditProfile={() => setActive("edit-profile")} onSettings={() => setActive("settings")} onLogout={logout} />}
-        {active === "settings" && <SettingsPage profile={profile} onBack={goBack} onEditProfile={() => setActive("edit-profile")} onLogout={logout} />}
+        {active === "settings" && <SettingsPage profile={profile} userId={session.user.id} email={email} onBack={goBack} onEditProfile={() => setActive("edit-profile")} onLogout={logout} onProfileUpdated={setProfile} />}
         {active === "edit-profile" && <EditProfilePage profile={profile} userId={session.user.id} onBack={goBack} onProfileUpdated={setProfile} />}
       </section>
     </main>
