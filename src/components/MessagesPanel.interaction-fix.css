@@ -1,0 +1,4 @@
+/* Final chat interaction polish. */
+.messages-panel.chat-open .lucide-corner-up-left{display:none!important}
+.messages-panel.chat-open button:has(.lucide-corner-up-left){min-width:52px!important;width:auto!important;padding:0 10px!important;gap:5px!important}
+.messages-panel.chat-open button:has(.lucide-corner-up-left)::after{content:"Reply";font-size:12px;font-weight:600;color:inherit;line-height:1}
