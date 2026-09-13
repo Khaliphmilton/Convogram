@@ -1,20 +1,27 @@
-/* Android chat viewport: true full-screen conversation. */
+/* Android chat: true conversation mode. The open chat itself is the source of truth. */
 *,*::before,*::after{box-sizing:border-box}
 
-/* The presence of an open chat is the source of truth. This does not depend on React parent state. */
-body:has(.messages-panel.chat-open) .topbar,
-body:has(.messages-panel.chat-open) .mobile-nav,
-body:has(.messages-panel.chat-open) .sidebar,
-body:has(.messages-panel.chat-open) .app-sidebar{display:none!important}
+/* Remove the Convogram shell navigation as soon as a chat exists. */
 html:has(.messages-panel.chat-open),body:has(.messages-panel.chat-open){overflow:hidden!important}
+body:has(.messages-panel.chat-open) .topbar,
+body:has(.messages-panel.chat-open) .sidebar,
+body:has(.messages-panel.chat-open) .mobile-nav,
+body:has(.messages-panel.chat-open) .app>.topbar,
+body:has(.messages-panel.chat-open) .app>.layout>.sidebar,
+body:has(.messages-panel.chat-open) .app>.mobile-nav,
+.app:has(.messages-panel.chat-open)>.topbar,
+.app:has(.messages-panel.chat-open)>.layout>.sidebar,
+.app:has(.messages-panel.chat-open)>.mobile-nav{display:none!important}
 
+/* The chat owns the whole WebView. Android's own system navigation remains outside it. */
 .messages-panel.chat-open{
   position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important;
-  min-height:0!important;margin:0!important;padding:0!important;display:flex!important;
-  flex-direction:column!important;background:#080808!important;border:0!important;border-radius:0!important;
+  min-height:0!important;max-height:100dvh!important;margin:0!important;padding:0!important;
+  display:flex!important;flex-direction:column!important;grid-template-columns:none!important;
+  background:#080808!important;border:0!important;border-radius:0!important;
   overflow:hidden!important;z-index:2147483646!important;isolation:isolate!important;
 }
-.messages-panel.chat-open>.conversation-list{display:none!important;visibility:hidden!important;opacity:0!important;width:0!important;height:0!important;pointer-events:none!important;overflow:hidden!important}
+.messages-panel.chat-open>.conversation-list{display:none!important;visibility:hidden!important;opacity:0!important;width:0!important;height:0!important;min-width:0!important;min-height:0!important;pointer-events:none!important;overflow:hidden!important}
 .messages-panel.chat-open>.chat-window{position:relative!important;inset:auto!important;display:flex!important;flex:1 1 0!important;flex-direction:column!important;width:100%!important;height:100%!important;min-height:0!important;max-height:100%!important;background:#080808!important;overflow:hidden!important}
 .messages-panel.chat-open>.chat-window .chat-head{flex:0 0 58px!important;height:58px!important;min-height:58px!important;padding:0 10px!important;background:#0b0b0b!important;border-bottom:1px solid #202020!important;z-index:3!important}
 .messages-panel.chat-open>.chat-window .message-stream{flex:1 1 0!important;height:auto!important;min-height:0!important;max-height:none!important;padding:10px!important;overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch!important;background:#080808!important}
@@ -24,6 +31,6 @@ html:has(.messages-panel.chat-open),body:has(.messages-panel.chat-open){overflow
 .messages-panel.chat-open>.chat-window .message-row{touch-action:pan-y!important;transition:transform .16s ease!important}
 
 @media(max-width:760px){
-  .messages-panel.chat-open{padding-top:env(safe-area-inset-top)!important;padding-bottom:env(safe-area-inset-bottom)!important}
-  .messages-panel.chat-open>.chat-window{height:100%!important}
+ .messages-panel.chat-open{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)!important}
+ .messages-panel.chat-open>.chat-window{height:100%!important}
 }
