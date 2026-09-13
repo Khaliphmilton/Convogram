@@ -13,7 +13,7 @@ function looksLikeMessage(value) {
 }
 
 function findMessage(value, depth = 0, seen = new Set()) {
-  if (!value || depth > 3 || (typeof value === "object" && seen.has(value))) return null;
+  if (!value || depth > 7 || (typeof value === "object" && seen.has(value))) return null;
   if (typeof value === "object") seen.add(value);
   if (looksLikeMessage(value)) return value;
   if (Array.isArray(value)) {
@@ -24,17 +24,36 @@ function findMessage(value, depth = 0, seen = new Set()) {
     return null;
   }
   if (typeof value !== "object") return null;
-  const preferred = ["message", "item", "msg", "currentMessage", "data"];
+  const preferred = ["message", "item", "msg", "currentMessage", "data", "value", "memoizedState"];
   for (const key of preferred) {
     const found = findMessage(value[key], depth + 1, seen);
     if (found) return found;
   }
-  if (depth < 2) {
+  if (depth < 4) {
     for (const key of Object.keys(value)) {
       if (preferred.includes(key)) continue;
       const found = findMessage(value[key], depth + 1, seen);
       if (found) return found;
     }
+  }
+  return null;
+}
+
+function findMessageWithId(value, id, depth = 0, seen = new Set()) {
+  if (!value || depth > 10 || (typeof value === "object" && seen.has(value))) return null;
+  if (typeof value === "object") seen.add(value);
+  if (looksLikeMessage(value) && value.id === id) return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findMessageWithId(item, id, depth + 1, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== "object") return null;
+  for (const key of Object.keys(value)) {
+    const found = findMessageWithId(value[key], id, depth + 1, seen);
+    if (found) return found;
   }
   return null;
 }
@@ -49,11 +68,19 @@ function findMessageTarget(target, host) {
   while (element && element !== host) {
     const fiber = getFiber(element);
     if (fiber) {
-      const message = findMessage(fiber.memoizedProps) || findMessage(fiber.pendingProps);
-      if (message?.id) return { element, message };
-      if (fiber.key != null && typeof fiber.key === "string") {
-        const key = fiber.key;
-        if (looksLikeMessage({ id: key, sender_id: "", content: "" })) return { element, message: null };
+      const direct = findMessage(fiber.memoizedProps) || findMessage(fiber.pendingProps);
+      if (direct?.id) return { element, message: direct };
+
+      const fiberKey = typeof fiber.key === "string" ? fiber.key : null;
+      if (fiberKey) {
+        let cursor = fiber;
+        for (let level = 0; cursor && level < 14; level += 1, cursor = cursor.return) {
+          const candidates = [cursor.memoizedProps, cursor.pendingProps, cursor.memoizedState];
+          for (const candidate of candidates) {
+            const keyed = findMessageWithId(candidate, fiberKey);
+            if (keyed) return { element, message: keyed };
+          }
+        }
       }
     }
     element = element.parentElement;
@@ -162,33 +189,16 @@ export function MessagesPanel(props) {
   }, [menu]);
 
   const close = () => { setMenu(null); setBusy(false); };
-
   const messageText = (message) => message.content || (message.message_type === "image" ? "Photo" : message.message_type === "video" ? "Video" : message.message_type === "audio" ? "Voice message" : "Attachment");
 
   const copyMessage = async () => {
     if (!menu?.message) return;
-    try { await navigator.clipboard.writeText(messageText(menu.message)); close(); }
-    catch (_) { setBusy(false); }
+    try { await navigator.clipboard.writeText(messageText(menu.message)); close(); } catch (_) { setBusy(false); }
   };
 
   const replyMessage = () => {
-    const target = menu?.element;
-    if (!target) return;
-    const message = menu.message;
-    try {
-      const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
-      const touchEnd = new Event("touchend", { bubbles: true, cancelable: true });
-      const startX = Math.max(1, target.getBoundingClientRect().left + 10);
-      const endX = startX + 100;
-      const makeTouch = (x) => ({ identifier: Date.now(), target, clientX: x, clientY: target.getBoundingClientRect().top + 20, pageX: x, pageY: 20, screenX: x, screenY: 20 });
-      Object.defineProperty(touchStart, "touches", { value: [makeTouch(startX)] });
-      Object.defineProperty(touchStart, "changedTouches", { value: [makeTouch(startX)] });
-      Object.defineProperty(touchEnd, "touches", { value: [] });
-      Object.defineProperty(touchEnd, "changedTouches", { value: [makeTouch(endX)] });
-      target.dispatchEvent(touchStart);
-      target.dispatchEvent(touchEnd);
-      try { window.dispatchEvent(new CustomEvent("convogram_reply_requested", { detail: message })); } catch (_) {}
-    } catch (_) {}
+    if (!menu?.message) return;
+    try { window.dispatchEvent(new CustomEvent("convogram_reply_requested", { detail: menu.message })); } catch (_) {}
     close();
   };
 
