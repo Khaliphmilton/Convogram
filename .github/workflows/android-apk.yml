@@ -28,6 +28,7 @@ jobs:
           grep -q 'setTimeout(() => {' src/main.jsx
           grep -q 'Could not start Convogram' src/main.jsx
           grep -q 'Unable to sign in right now' src/main.jsx
+          grep -q 'class ConvogramErrorBoundary' src/main.jsx
           ! grep -q 'Loading your social world' src/main.jsx
       - name: Build web app
         run: npm run build
@@ -59,7 +60,7 @@ jobs:
           set -e
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do test -f android/app/src/main/res/mipmap-$d/ic_launcher.png; done
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do test -f android/app/src/main/res/mipmap-$d/ic_launcher_round.png; done
-          test -f android/app/src/main/res/drawable/transparent.xml
+          test -f android/app/src/main/res/drawable-nodpi/convogram_splash.png
           test -f android/app/src/main/res/drawable/convogram_launch_background.xml
           test -f android/app/src/main/res/values-v31/convogram_launch.xml
           test ! -e android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
@@ -92,7 +93,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -e
-          ./gradlew assembleRelease             -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/convogram-release.jks"             -Pandroid.injected.signing.store.password="$STORE_PASSWORD"             -Pandroid.injected.signing.key.alias="$KEY_ALIAS"             -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          ./gradlew assembleRelease -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/convogram-release.jks" -Pandroid.injected.signing.store.password="$STORE_PASSWORD" -Pandroid.injected.signing.key.alias="$KEY_ALIAS" -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
           test -f app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
 
