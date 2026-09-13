@@ -10,23 +10,9 @@
     <link rel="stylesheet" href="/src/post-composer-organization.css" />
     <link rel="stylesheet" href="/src/topbar-organization.css" />
     <link rel="stylesheet" href="/src/splash-branding.css" />
-    <style>
-      #convogram-splash{position:fixed;inset:0;z-index:99999;background:#071426;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;transition:opacity .35s ease,visibility .35s ease}
-      #convogram-splash.hide{opacity:0;visibility:hidden;pointer-events:none}
-      #convogram-splash .splash-icon{width:82px;height:82px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);margin-bottom:18px}
-      #convogram-splash h1{margin:0;font-size:30px;letter-spacing:-.04em;font-weight:800}
-      #convogram-splash .company{position:absolute;bottom:48px;font-size:12px;font-weight:800;letter-spacing:.24em;color:rgba(255,255,255,.72)}
-      #convogram-splash .tagline{position:absolute;bottom:27px;font-size:9px;letter-spacing:.12em;color:rgba(255,255,255,.34)}
-    </style>
     <title>Convogram</title>
   </head>
   <body>
-    <div id="convogram-splash" aria-label="Khaliph Industries — Convogram">
-      <img class="splash-icon" src="/convogram-icon.svg" alt="Convogram" />
-      <h1>Convogram</h1>
-      <div class="company">KHALIPH INDUSTRIES</div>
-      <div class="tagline">TECHNOLOGY • SOCIAL • COMMUNITY</div>
-    </div>
     <div id="root"></div>
     <script>
       window.addEventListener("popstate", (event) => {
@@ -35,7 +21,6 @@
           if (handled) event.stopImmediatePropagation();
         }
       }, true);
-      window.setTimeout(() => document.getElementById("convogram-splash")?.classList.add("hide"), 2200);
     </script>
     <script type="module" src="/src/chat-back-fix.js"></script>
     <script type="module" src="/src/media-picker-flow.js"></script>
