@@ -75,6 +75,34 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
   const streamRef = useRef(null);
   const messageStreamRef = useRef(null);
   const presenceRef = useRef(null);
+  const swipeRef = useRef({ id: null, x: 0, y: 0, active: false });
+
+  const beginSwipeReply = (e, messageId) => {
+    const t = e.touches?.[0];
+    if (!t) return;
+    swipeRef.current = { id: messageId, x: t.clientX, y: t.clientY, active: false };
+  };
+  const moveSwipeReply = (e) => {
+    const t = e.touches?.[0];
+    const s = swipeRef.current;
+    if (!t || !s.id) return;
+    const dx = t.clientX - s.x;
+    const dy = Math.abs(t.clientY - s.y);
+    if (dx > 18 && dx > dy * 1.25) s.active = true;
+  };
+  const endSwipeReply = (e, message) => {
+    const t = e.changedTouches?.[0];
+    const s = swipeRef.current;
+    if (!t || !s.id) return;
+    const dx = t.clientX - s.x;
+    const dy = Math.abs(t.clientY - s.y);
+    if (dx >= 70 && dx > dy * 1.25) {
+      setReplyingTo(message);
+      setReactionMessageId(null);
+    }
+    swipeRef.current = { id: null, x: 0, y: 0, active: false };
+  };
+
 
   const loadConversations = async () => {
     if (!userId) return;
@@ -234,7 +262,7 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
             const media = ["image", "video", "audio"].includes(item.message_type);
             const reactions = item.message_reactions || [];
             const open = reactionMessageId === item.id;
-            return <div key={item.id} className={`message-row ${mine ? "mine" : "theirs"}`}><div className={`message-bubble ${open ? "reaction-active" : ""}`} onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }}>
+            return <div key={item.id} className={`message-row ${mine ? "mine" : "theirs"}`} onTouchStart={e => beginSwipeReply(e, item.id)} onTouchMove={moveSwipeReply} onTouchEnd={e => endSwipeReply(e, item)}><div className={`message-bubble ${open ? "reaction-active" : ""}`} onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }}>
               {item.is_deleted ? <em>Message deleted</em> : media && item.media_url ? (item.message_type === "image" ? <img src={item.media_url} alt="Shared media" className="message-media" /> : item.message_type === "video" ? <video src={item.media_url} className="message-media" controls preload="metadata" /> : <VoiceNote src={item.media_url} />) : <span className="message-text">{item.content || "Attachment"}</span>}
               {open && !item.is_deleted && <div className="message-actions"><div className="reaction-picker">{REACTIONS.map(r => <button key={r} type="button" onClick={() => toggleReaction(item, r)}>{r}</button>)}</div><div className="message-tools"><button type="button" onClick={() => { setReplyingTo(item); setReactionMessageId(null); }}><Reply size={13} /></button>{mine && <button type="button" onClick={() => handleDelete(item)}><Trash2 size={13} /></button>}</div></div>}
               {reactions.length > 0 && <div className="message-reactions">{[...new Set(reactions.map(r => r.reaction))].map(r => <span key={r}>{r}</span>)}</div>}
