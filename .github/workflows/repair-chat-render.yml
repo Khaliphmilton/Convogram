@@ -1,0 +1,41 @@
+name: repair-chat-render
+on:
+  push:
+    branches: [main]
+jobs:
+  repair:
+    if: github.event.head_commit.message != 'Fix chat opening and message loading'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add chat render error boundary
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/MessagesPanel.jsx')
+          s = p.read_text()
+          if 'class MessagesPanelErrorBoundary' not in s:
+              s = s.replace('import { useEffect, useMemo, useRef, useState } from "react";', 'import { Component, useEffect, useMemo, useRef, useState } from "react";')
+              marker = 'const REACTIONS = ["❤️", "😂", "👍", "🔥", "😮", "😢"];'
+              boundary = '''class MessagesPanelErrorBoundary extends Component {\n  constructor(props) { super(props); this.state = { hasError: false, message: "" }; }\n  static getDerivedStateFromError(error) { return { hasError: true, message: error?.message || "The chat could not be displayed." }; }\n  componentDidCatch(error) { console.error("Convogram chat render error", error); }\n  render() {\n    if (!this.state.hasError) return this.props.children;\n    return <div className="messages-panel chat-render-error"><div className="chat-render-error-card"><strong>Chat could not be displayed</strong><span>{this.state.message}</span><button type="button" onClick={() => window.location.reload()}>Reload chat</button></div></div>;\n  }\n}\n\n'''
+              if marker not in s: raise SystemExit('reaction marker not found')
+              s = s.replace(marker, boundary + marker, 1)
+              s = s.replace('export function MessagesPanel({ userId, initialConversationId = null, onBack }) {', 'function MessagesPanelContent({ userId, initialConversationId = null, onBack }) {', 1)
+              s += '\n\nexport function MessagesPanel(props) {\n  return <MessagesPanelErrorBoundary><MessagesPanelContent {...props} /></MessagesPanelErrorBoundary>;\n}\n'
+              p.write_text(s)
+          css = Path('src/components/MessagesPanel.css')
+          c = css.read_text()
+          if '.chat-render-error' not in c:
+              c += '\n.chat-render-error{display:flex;align-items:center;justify-content:center;min-height:100%;padding:24px;background:#080808}.chat-render-error-card{display:flex;flex-direction:column;gap:10px;max-width:360px;padding:22px;border:1px solid rgba(120,150,255,.28);border-radius:18px;background:#111722;color:#fff}.chat-render-error-card span{color:#aeb8c8;font-size:13px;word-break:break-word}.chat-render-error-card button{border:0;border-radius:10px;padding:11px 14px;background:#3d7eff;color:#fff;font-weight:700}\n'
+              css.write_text(c)
+          PY
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/MessagesPanel.jsx src/components/MessagesPanel.css
+          git diff --cached --quiet || git commit -m 'Fix chat opening and message loading'
+          git push
