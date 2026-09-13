@@ -48,32 +48,30 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
       - name: Generate Convogram Android branding
         run: node scripts/generate-android-icon.mjs
-      - name: Remove default Capacitor branding
+      - name: Remove all default Capacitor branding
         run: |
           set -e
-          rm -f android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
-          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-          rm -f android/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
-          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-          rm -f android/app/src/main/res/mipmap-anydpi/ic_launcher_foreground.xml
-          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_foreground.xml
           find android/app/src/main/res -type f -iname '*capacitor*' -delete
-          grep -RIl '@capacitor/splash-screen' android/app/src/main/res 2>/dev/null | xargs -r rm -f
+          find android/app/src/main/res -type f \( -iname '*splash*screen*' -o -iname '*splash_screen*' \) -delete
+          rm -rf android/app/src/main/res/mipmap-anydpi android/app/src/main/res/mipmap-anydpi-v26
           find android/app/src/main/res -type f -name '*.xml' -print0 | xargs -0 -r sed -i \
             -e '/windowSplashScreenAnimatedIcon/d' \
             -e '/android:windowSplashScreenIconBackgroundColor/d' \
-            -e '/postSplashScreenTheme/d'
+            -e '/postSplashScreenTheme/d' \
+            -e '/@drawable\/capacitor_splash_screen/d' \
+            -e '/@drawable\/splash_screen/d'
       - name: Finalize Convogram Android branding
         run: node scripts/finalize-android-branding.mjs
       - name: Verify Convogram Android branding
         run: |
           set -e
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do test -f android/app/src/main/res/mipmap-$d/ic_launcher.png; done
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do test -f android/app/src/main/res/mipmap-$d/ic_launcher_round.png; done
           test -f android/app/src/main/res/drawable/splash.png
           test ! -e android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
           test ! -e android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-          if grep -Rqs '@capacitor/splash-screen' android/app/src/main/res; then echo 'Default Capacitor splash resources remain'; exit 1; fi
-          if grep -Rqs 'capacitor' android/app/src/main/res; then echo 'Capacitor branding remains'; exit 1; fi
+          if grep -Rqi 'capacitor' android/app/src/main/res; then echo 'Capacitor branding remains'; exit 1; fi
+          if grep -Rqi 'capacitor_splash\|splash_screen' android/app/src/main/res; then echo 'Default splash resources remain'; exit 1; fi
       - name: Prepare Android signing key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
