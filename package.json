@@ -17,6 +17,7 @@
     "@capacitor/push-notifications": "latest",
     "@capacitor/status-bar": "latest",
     "@supabase/supabase-js": "latest",
+    "emoji-picker-react": "latest",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest"
