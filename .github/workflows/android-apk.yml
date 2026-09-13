@@ -46,16 +46,16 @@ jobs:
           test -n "$ANDROID_KEYSTORE_PASSWORD"
           test -n "$ANDROID_KEY_ALIAS"
           test -n "$ANDROID_KEY_PASSWORD"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' > convogram-keystore.b64
+          # Normalize copy/paste artifacts in the Base64 secret.
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -cd 'A-Za-z0-9+/=' > convogram-keystore.b64
           python3 - <<'PY'
-          import base64, binascii
+          import base64
           from pathlib import Path
-          s=Path('convogram-keystore.b64').read_text().strip()
+          s=Path('convogram-keystore.b64').read_text().rstrip('=')
+          if not s: raise SystemExit('Keystore Base64 is empty')
           s += '=' * (-len(s) % 4)
-          try:
-              data=base64.b64decode(s, validate=True)
-          except binascii.Error as e:
-              raise SystemExit(f'Invalid Base64 keystore secret: {e}')
+          try: data=base64.b64decode(s, validate=True)
+          except Exception as e: raise SystemExit(f'Invalid keystore Base64 after normalization: {e}')
           Path('convogram-source.keystore').write_bytes(data)
           PY
           test -s convogram-source.keystore
