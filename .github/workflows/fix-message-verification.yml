@@ -1,0 +1,39 @@
+name: Fix message verification badge
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove duplicate avatar verification badge
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/components/MessagesPanel.css')
+          text = path.read_text()
+          rule = '.conversation-avatar .convogram-verified-badge{display:none!important}'
+          if rule not in text:
+              path.write_text(text + '\n' + rule + '\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/MessagesPanel.css
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix duplicate verification badge in messages'
+          git push
+      - name: Remove temporary workflow
+        run: |
+          rm -f .github/workflows/fix-message-verification.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/fix-message-verification.yml
+          git commit -m 'Remove temporary badge fix workflow'
+          git push
