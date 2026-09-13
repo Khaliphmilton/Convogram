@@ -59,6 +59,11 @@ jobs:
       - name: Remove all default Capacitor branding
         run: |
           set -e
+          # Remove Android splash-theme references before deleting the generated splash assets.
+          find android/app/src/main/res -type f -name '*.xml' -print0 | xargs -0 -r sed -i \
+            -e '/windowSplashScreenAnimatedIcon/d' \
+            -e '/android:windowSplashScreen/d' \
+            -e '/postSplashScreenTheme/d'
           rm -f android/app/src/main/res/drawable/splash.png
           rm -f android/app/src/main/res/drawable/splash.xml
           rm -f android/app/src/main/res/drawable/splash_background.xml
@@ -85,6 +90,10 @@ jobs:
           test ! -e android/app/src/main/res/drawable/splash.xml
           if grep -Rqs "@capacitor/splash-screen" android/app/src/main/res; then
             echo "Default Capacitor splash resources remain"
+            exit 1
+          fi
+          if grep -Rqs "@drawable/splash" android/app/src/main/res; then
+            echo "Android resources still reference removed splash drawable"
             exit 1
           fi
 
