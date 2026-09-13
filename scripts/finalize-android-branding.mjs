@@ -1,13 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const res = path.resolve('android/app/src/main/res');
 const manifestPath = path.resolve('android/app/src/main/AndroidManifest.xml');
 const gradlePath = path.resolve('android/app/build.gradle');
+const iconSvgPath = path.resolve('assets/icon.svg');
 
 if (!fs.existsSync(res)) throw new Error('Android resources are missing.');
 if (!fs.existsSync(manifestPath)) throw new Error('AndroidManifest.xml is missing.');
 if (!fs.existsSync(gradlePath)) throw new Error('android/app/build.gradle is missing.');
+if (!fs.existsSync(iconSvgPath)) throw new Error('Convogram icon SVG is missing.');
 
 function walk(dir) {
   const out = [];
@@ -39,8 +42,35 @@ for (const density of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
   }
 }
 
-// Android 12+ always provides a system launch window. Make it a plain Convogram
-// background with a transparent icon so the Capacitor logo can never appear.
+// Build a branded splash image from the same Convogram logo used by the app.
+// It contains the logo, app name, tagline, and Khaliph Industries branding.
+const drawableNodpi = path.join(res, 'drawable-nodpi');
+const splashSvg = path.resolve('convogram-splash.svg');
+const splashPng = path.join(drawableNodpi, 'convogram_splash.png');
+fs.mkdirSync(drawableNodpi, { recursive: true });
+const iconSvg = fs.readFileSync(iconSvgPath, 'utf8');
+const iconData = Buffer.from(iconSvg, 'utf8').toString('base64');
+fs.writeFileSync(splashSvg, `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="210" fill="#071426"/>
+  <image x="172" y="72" width="680" height="680" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,${iconData}"/>
+  <text x="512" y="820" text-anchor="middle" font-family="sans-serif" font-size="74" font-weight="700" letter-spacing="2" fill="#ffffff">CONVOGRAM</text>
+  <text x="512" y="875" text-anchor="middle" font-family="sans-serif" font-size="26" font-weight="600" letter-spacing="5" fill="#b9c9e8">EVERYTHING SOCIAL, TOGETHER.</text>
+  <text x="512" y="938" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="700" letter-spacing="6" fill="#7890b8">KHALIPH INDUSTRIES</text>
+</svg>
+`);
+try {
+  execFileSync('rsvg-convert', ['-w', '1024', '-h', '1024', '-o', splashPng, splashSvg], { stdio: 'inherit' });
+} catch (error) {
+  throw new Error(`Could not generate Convogram splash image: ${error?.message || error}`);
+} finally {
+  fs.rmSync(splashSvg, { force: true });
+}
+if (!fs.existsSync(splashPng)) throw new Error('Convogram splash image was not generated.');
+
+// Android 12+ always provides a system launch window. Use the branded image
+// as the launch icon and keep the background Convogram blue so the Capacitor
+// logo cannot appear.
 const drawable = path.join(res, 'drawable');
 const values = path.join(res, 'values');
 const valuesV31 = path.join(res, 'values-v31');
@@ -48,16 +78,17 @@ fs.mkdirSync(drawable, { recursive: true });
 fs.mkdirSync(values, { recursive: true });
 fs.mkdirSync(valuesV31, { recursive: true });
 
-fs.writeFileSync(path.join(drawable, 'transparent.xml'), `<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@android:color/transparent" />
-</shape>
-`);
-
 fs.writeFileSync(path.join(drawable, 'convogram_launch_background.xml'), `<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#071426" />
-</shape>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <solid android:color="#071426" />
+        </shape>
+    </item>
+    <item android:gravity="center">
+        <bitmap android:src="@drawable/convogram_splash" android:gravity="center" />
+    </item>
+</layer-list>
 `);
 
 const baseStyle = `<?xml version="1.0" encoding="utf-8"?>
@@ -82,7 +113,7 @@ const v31Style = `<?xml version="1.0" encoding="utf-8"?>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">@drawable/convogram_launch_background</item>
         <item name="android:windowSplashScreenBackground">#071426</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/transparent</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/convogram_splash</item>
         <item name="android:statusBarColor">#071426</item>
         <item name="android:navigationBarColor">#071426</item>
         <item name="android:windowLightStatusBar">false</item>
@@ -116,4 +147,4 @@ fs.writeFileSync(gradlePath, gradle);
 if (manifest.match(/capacitor_splash|splash_screen/i)) {
   throw new Error('Capacitor splash references remain in AndroidManifest.xml');
 }
-console.log(`Android branding finalized: Convogram launcher, no Capacitor splash, version ${versionName} (${versionCode}).`);
+console.log(`Android branding finalized: Convogram branded splash, Convogram launcher, no Capacitor splash, version ${versionName} (${versionCode}).`);
