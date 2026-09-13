@@ -96,3 +96,24 @@
     flex-basis:58px!important;height:58px!important;min-height:58px!important;
   }
 }
+
+/* Full-screen conversation mode: remove Convogram shell navigation immediately. */
+body.convogram-chat-open .topbar,
+body.convogram-chat-open .mobile-nav,
+body.convogram-chat-open .sidebar,
+body.convogram-chat-open .app-sidebar{
+  display:none!important;
+}
+body.convogram-chat-open,
+body.convogram-chat-open #root{
+  overflow:hidden!important;
+}
+body.convogram-chat-open .messages-panel.chat-open{
+  top:0!important;
+  bottom:0!important;
+  height:100dvh!important;
+  z-index:2147483646!important;
+}
+body.convogram-chat-open .messages-panel.chat-open>.chat-window{
+  height:100%!important;
+}
