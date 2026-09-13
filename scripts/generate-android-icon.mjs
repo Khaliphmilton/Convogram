@@ -9,7 +9,7 @@ fs.mkdirSync(output, { recursive: true });
 
 const sizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
 const densityScale = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
-for (const [density, scale] of Object.entries(densityScale)) {
+for (const [density] of Object.entries(densityScale)) {
   const dir = path.join(output, `mipmap-${density}`);
   fs.mkdirSync(dir, { recursive: true });
   const size = sizes[density];
@@ -19,4 +19,18 @@ for (const [density, scale] of Object.entries(densityScale)) {
   } catch {
     throw new Error('Unable to convert Convogram icon SVG to PNG on the Android build runner.');
   }
+}
+
+// Override the generated/default splash artwork with Convogram branding.
+const drawable = path.join(output, 'drawable');
+fs.mkdirSync(drawable, { recursive: true });
+try {
+  execFileSync('rsvg-convert', [
+    '-w', '1024',
+    '-h', '1024',
+    '-o', path.join(drawable, 'splash.png'),
+    source
+  ]);
+} catch {
+  throw new Error('Unable to create the Convogram splash resource.');
 }
