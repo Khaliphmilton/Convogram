@@ -16,15 +16,29 @@ function validateMedia(file, videoOnly = false) {
   return isImage ? "image" : "video";
 }
 
+function normalizeAudioType(file) {
+  const type = String(file?.type || "").toLowerCase().split(";")[0].trim();
+  if (ALLOWED_AUDIO_TYPES.includes(type)) return type;
+  // Android/Chrome MediaRecorder commonly returns codec-qualified MIME types
+  // such as audio/webm;codecs=opus or audio/ogg;codecs=opus.
+  if (type.startsWith("audio/webm")) return "audio/webm";
+  if (type.startsWith("audio/ogg")) return "audio/ogg";
+  if (type.startsWith("audio/mp4")) return "audio/mp4";
+  if (type.startsWith("audio/mpeg")) return "audio/mpeg";
+  if (type.startsWith("audio/wav") || type.startsWith("audio/x-wav")) return "audio/wav";
+  return null;
+}
+
 function validateAudio(file) {
   if (!file) throw new Error("Choose an audio file first.");
-  if (!ALLOWED_AUDIO_TYPES.includes(file.type)) throw new Error("Audio format not supported.");
+  const audioType = normalizeAudioType(file);
+  if (!audioType) throw new Error("Audio format not supported.");
   if (file.size > MAX_AUDIO_SIZE) throw new Error("Voice note is too large. Maximum size is 20MB.");
   return "audio";
 }
 
 async function upload(file, path, mediaType) {
-  const contentType = file.type || (mediaType === "image" ? "image/jpeg" : mediaType === "video" ? "video/mp4" : "application/octet-stream");
+  const contentType = normalizeAudioType(file) || file.type || (mediaType === "image" ? "image/jpeg" : mediaType === "video" ? "video/mp4" : "application/octet-stream");
   const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(path, file, {
     upsert: false,
     contentType,
