@@ -143,3 +143,5 @@ jobs:
           files: Convogram.apk
           generate_release_notes: true
           make_latest: true
+
+# Trigger release build after signing-key refresh.
