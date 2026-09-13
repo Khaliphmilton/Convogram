@@ -38,9 +38,7 @@ export function MessagesPanel(props) {
       armMediaGuard.timeout = window.setTimeout(() => stopMediaGuard(), 20000);
     };
 
-    const onMediaChange = () => {
-      window.setTimeout(() => stopMediaGuard(), 2500);
-    };
+    const onMediaChange = () => window.setTimeout(() => stopMediaGuard(), 2500);
 
     const onFocus = () => {
       if (!mediaPickerOpen) return;
@@ -64,22 +62,9 @@ export function MessagesPanel(props) {
           import("@capacitor/core"),
         ]);
         if (!Capacitor.isNativePlatform()) return false;
-
         armMediaGuard();
-        const photo = await Camera.getPhoto({
-          source: CameraSource.Photos,
-          resultType: CameraResultType.DataUrl,
-          quality: 90,
-          width: 2048,
-          height: 2048,
-          correctOrientation: true,
-        });
-
-        if (!photo?.dataUrl) {
-          stopMediaGuard();
-          return true;
-        }
-
+        const photo = await Camera.getPhoto({ source: CameraSource.Photos, resultType: CameraResultType.DataUrl, quality: 90, width: 2048, height: 2048, correctOrientation: true });
+        if (!photo?.dataUrl) { stopMediaGuard(); return true; }
         const response = await fetch(photo.dataUrl);
         const blob = await response.blob();
         const mime = blob.type || "image/jpeg";
@@ -99,23 +84,23 @@ export function MessagesPanel(props) {
 
     const saveMediaToGallery = async (event) => {
       const button = event.target?.closest?.('button[aria-label="Save to gallery"]');
-      if (!button || !host.contains(button)) return;
-
+      if (!button || !host.contains(button) || button.dataset.saving === "true") return;
       const viewer = button.closest(".convogram-media-viewer");
       const media = viewer?.querySelector("img.convogram-media-viewer-media, video.convogram-media-viewer-media");
-      if (!media?.src) return;
+      const source = media?.currentSrc || media?.src;
+      if (!source) return;
 
       try {
         const { Capacitor } = await import("@capacitor/core");
         if (!Capacitor.isNativePlatform()) return;
-
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation?.();
+        button.dataset.saving = "true";
         button.disabled = true;
         button.setAttribute("aria-busy", "true");
-
         const { Media } = await import("@capacitor-community/media");
+
         let { albums } = await Media.getAlbums();
         let album = albums?.find((item) => item.name === "Convogram");
         if (!album) {
@@ -127,19 +112,20 @@ export function MessagesPanel(props) {
 
         const isVideo = media.tagName.toLowerCase() === "video";
         const fileName = `Convogram-${Date.now()}`;
-        const options = { path: media.src, albumIdentifier: album.identifier, fileName };
+        const options = { path: source, albumIdentifier: album.identifier, fileName };
         if (isVideo) await Media.saveVideo(options);
         else await Media.savePhoto(options);
 
-        button.setAttribute("data-save-complete", "true");
+        button.dataset.saveComplete = "true";
         button.title = "Saved to gallery";
         button.setAttribute("aria-label", "Saved to gallery");
         const label = button.querySelector(".media-save-label");
         if (label) label.textContent = "Saved";
       } catch (error) {
         console.warn("Convogram gallery save failed.", error);
-        window.dispatchEvent(new CustomEvent("convogram-media-save-error", { detail: error?.message || "Could not save media." }));
+        window.dispatchEvent(new CustomEvent("convogram-media-save-error", { detail: error?.message || "Could not save media to the gallery." }));
       } finally {
+        delete button.dataset.saving;
         button.disabled = false;
         button.removeAttribute("aria-busy");
       }
@@ -148,25 +134,18 @@ export function MessagesPanel(props) {
     const onMediaSaveError = (event) => {
       const viewer = host.querySelector(".convogram-media-viewer");
       const errorBox = viewer?.querySelector(".convogram-media-viewer-error");
-      if (!errorBox) return;
-      errorBox.textContent = event.detail || "Could not save media.";
+      if (errorBox) errorBox.textContent = event.detail || "Could not save media to the gallery.";
     };
 
     const onAttachCapture = async (event) => {
       const button = event.target?.closest?.('.message-composer button[title="Attach media"]');
       if (!button || !host.contains(button)) return;
-
       event.preventDefault();
       event.stopPropagation();
-
       mediaInput = host.querySelector('.message-composer input[type="file"]');
       if (!mediaInput) return;
-
       const handledNatively = await dispatchNativePhotoToComposer(mediaInput);
-      if (!handledNatively) {
-        armMediaGuard();
-        mediaInput?.click();
-      }
+      if (!handledNatively) { armMediaGuard(); mediaInput.click(); }
     };
 
     const onFileClickCapture = (event) => {
@@ -183,27 +162,18 @@ export function MessagesPanel(props) {
       const point = event.touches?.[0];
       startX = point?.clientX || 0;
       startY = point?.clientY || 0;
-      timer = window.setTimeout(() => {
-        longPressed = true;
-      }, 650);
+      timer = window.setTimeout(() => { longPressed = true; }, 650);
     };
 
     const onTouchMove = (event) => {
       if (longPressed || !timer) return;
       const point = event.touches?.[0];
       if (!point) return;
-      const dx = point.clientX - startX;
-      const dy = point.clientY - startY;
-      if (Math.hypot(dx, dy) > 18) clearTimer();
+      if (Math.hypot(point.clientX - startX, point.clientY - startY) > 18) clearTimer();
     };
 
     const onTouchEnd = () => {
-      if (longPressed) {
-        window.setTimeout(() => {
-          longPressed = false;
-        }, 600);
-        return;
-      }
+      if (longPressed) { window.setTimeout(() => { longPressed = false; }, 600); return; }
       clearTimer();
     };
 
