@@ -117,3 +117,32 @@ body.convogram-chat-open .messages-panel.chat-open{
 body.convogram-chat-open .messages-panel.chat-open>.chat-window{
   height:100%!important;
 }
+
+/* Parent app-shell chat mode: hide ALL Convogram navigation immediately. */
+html.convogram-chat-mode,
+body.convogram-chat-mode{overflow:hidden!important}
+body.convogram-chat-mode .app>.topbar,
+body.convogram-chat-mode .app>.layout>.sidebar,
+body.convogram-chat-mode .mobile-nav{display:none!important}
+body.convogram-chat-mode .app.chat-mode,
+body.convogram-chat-mode .app.chat-mode>.layout,
+body.convogram-chat-mode .app.chat-mode>.layout>.content,
+body.convogram-chat-mode .app.chat-mode>.layout>.content>.page{
+  width:100%!important;
+  max-width:none!important;
+  height:100dvh!important;
+  min-height:0!important;
+  margin:0!important;
+  padding:0!important;
+}
+body.convogram-chat-mode .app.chat-mode>.layout,
+body.convogram-chat-mode .app.chat-mode>.layout>.content{
+  display:block!important;
+}
+body.convogram-chat-mode .messages-panel.chat-open{
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100dvh!important;
+  z-index:2147483646!important;
+}
