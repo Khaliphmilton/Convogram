@@ -24,10 +24,7 @@ jobs:
           end = s.find(marker, start)
           if start < 0 or end < 0:
               raise SystemExit('chat loader markers not found')
-          prefix_start = s.rfind('  ', 0, start)
-          if prefix_start < 0:
-              prefix_start = start
-          new = '''  async function loadConversation(id) {
+          new = '''async function loadConversation(id) {
     if (!id || !userId) return;
     setDetails(null); setMessages([]); setRemoteOnline(false); setLastOutgoingRead(false); setError("");
     const withTimeout = (promise, ms = 12000) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("Chat took too long to load. Please try again.")), ms))]);
@@ -52,8 +49,8 @@ jobs:
       setError(err?.message || "Unable to open conversation."); setSelectedId(null);
     }
   }
-'''
-          s = s[:prefix_start] + new + s[end:]
+  '''
+          s = s[:start] + new + s[end:]
           p.write_text(s)
 
           c = Path('src/components/MessagesPanel.css')
