@@ -34,13 +34,11 @@ export function MessagesPanel(props) {
       mediaInput = host.querySelector('.message-composer input[type="file"]');
       if (mediaInput) mediaInput.addEventListener("change", onMediaChange, true);
       window.clearTimeout(armMediaGuard.timeout);
-      armMediaGuard.timeout = window.setTimeout(() => stopMediaGuard(), 15000);
+      armMediaGuard.timeout = window.setTimeout(() => stopMediaGuard(), 20000);
     };
 
     const onMediaChange = () => {
-      // Let the real MessagesPanel upload handler run, but keep the chat route
-      // protected while Android finishes returning from the gallery/file picker.
-      window.setTimeout(() => stopMediaGuard(), 2000);
+      window.setTimeout(() => stopMediaGuard(), 2500);
     };
 
     const onFocus = () => {
@@ -48,7 +46,7 @@ export function MessagesPanel(props) {
       window.setTimeout(() => {
         const input = host.querySelector('.message-composer input[type="file"]');
         if (!input?.files?.length) stopMediaGuard();
-      }, 1200);
+      }, 1500);
     };
 
     const onWindowPopCapture = (event) => {
@@ -58,14 +56,61 @@ export function MessagesPanel(props) {
       event.stopImmediatePropagation?.();
     };
 
-    const onAttachCapture = (event) => {
+    const dispatchNativePhotoToComposer = async (input) => {
+      try {
+        const [{ Camera, CameraResultType, CameraSource }, { Capacitor }] = await Promise.all([
+          import("@capacitor/camera"),
+          import("@capacitor/core"),
+        ]);
+        if (!Capacitor.isNativePlatform()) return false;
+
+        armMediaGuard();
+        const photo = await Camera.getPhoto({
+          source: CameraSource.Photos,
+          resultType: CameraResultType.DataUrl,
+          quality: 90,
+          width: 2048,
+          height: 2048,
+          correctOrientation: true,
+        });
+
+        if (!photo?.dataUrl) {
+          stopMediaGuard();
+          return true;
+        }
+
+        const response = await fetch(photo.dataUrl);
+        const blob = await response.blob();
+        const mime = blob.type || "image/jpeg";
+        const extension = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+        const file = new File([blob], `convogram-${Date.now()}.${extension}`, { type: mime });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      } catch (error) {
+        console.warn("Native Convogram photo picker failed; using the browser picker instead.", error);
+        stopMediaGuard();
+        return false;
+      }
+    };
+
+    const onAttachCapture = async (event) => {
       const button = event.target?.closest?.('.message-composer button[title="Attach media"]');
       if (!button || !host.contains(button)) return;
+
       event.preventDefault();
       event.stopPropagation();
-      armMediaGuard();
+
       mediaInput = host.querySelector('.message-composer input[type="file"]');
-      mediaInput?.click();
+      if (!mediaInput) return;
+
+      const handledNatively = await dispatchNativePhotoToComposer(mediaInput);
+      if (!handledNatively) {
+        armMediaGuard();
+        mediaInput?.click();
+      }
     };
 
     const onFileClickCapture = (event) => {
@@ -125,6 +170,7 @@ export function MessagesPanel(props) {
     return () => {
       clearTimer();
       stopMediaGuard();
+      window.clearTimeout(armMediaGuard.timeout);
       host.removeEventListener("touchstart", onTouchStart, true);
       host.removeEventListener("touchmove", onTouchMove, true);
       host.removeEventListener("touchend", onTouchEnd, true);
