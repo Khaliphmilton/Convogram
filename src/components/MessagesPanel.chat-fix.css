@@ -1,8 +1,168 @@
-/* Android/native chat screen: render the conversation as a dedicated opaque screen. */
-.messages-panel.chat-open{position:relative!important;display:flex!important;flex-direction:column!important;inset:auto!important;width:100%!important;height:100%!important;min-height:0!important;margin:0!important;padding:0!important;background:#080808!important;border:0!important;border-radius:0!important;overflow:hidden!important;z-index:1!important;isolation:isolate!important}
-.messages-panel.chat-open>.conversation-list{display:none!important;visibility:hidden!important;opacity:0!important;width:0!important;height:0!important;min-width:0!important;min-height:0!important;pointer-events:none!important;overflow:hidden!important}
-.messages-panel.chat-open>.chat-window{display:flex!important;position:relative!important;inset:auto!important;flex:1 1 auto!important;width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;margin:0!important;background:#080808!important;z-index:2!important;overflow:hidden!important}
-.messages-panel.chat-open>.chat-window .chat-head{position:relative!important;flex:0 0 auto!important;z-index:3!important;background:#0b0b0b!important}
-.messages-panel.chat-open>.chat-window .message-stream{position:relative!important;flex:1 1 auto!important;min-height:0!important;z-index:2!important;background:#080808!important;overflow-y:auto!important}
-.messages-panel.chat-open>.chat-window .message-composer{position:relative!important;flex:0 0 auto!important;z-index:3!important;background:#0b0b0b!important}
-@media(max-width:760px){.messages-panel.chat-open{height:100%!important;min-height:0!important}.messages-panel.chat-open>.chat-window{height:100%!important;min-height:0!important}.messages-panel.chat-open>.chat-window .chat-head{padding-top:env(safe-area-inset-top);min-height:calc(60px + env(safe-area-inset-top))}.messages-panel.chat-open>.chat-window .message-composer{padding-bottom:max(8px,env(safe-area-inset-bottom));min-height:calc(60px + env(safe-area-inset-bottom))}}
+/* WhatsApp-style Android/native chat viewport: header + messages + composer stay inside one screen. */
+*,*::before,*::after{box-sizing:border-box}
+
+.messages-panel.chat-open{
+  position:relative!important;
+  display:flex!important;
+  flex-direction:column!important;
+  width:100%!important;
+  height:100%!important;
+  min-height:0!important;
+  max-height:100%!important;
+  margin:0!important;
+  padding:0!important;
+  background:#080808!important;
+  border:0!important;
+  border-radius:0!important;
+  overflow:hidden!important;
+  isolation:isolate!important;
+}
+
+.messages-panel.chat-open>.conversation-list{
+  display:none!important;
+  visibility:hidden!important;
+  opacity:0!important;
+  width:0!important;
+  height:0!important;
+  min-width:0!important;
+  min-height:0!important;
+  pointer-events:none!important;
+  overflow:hidden!important;
+}
+
+.messages-panel.chat-open>.chat-window{
+  display:flex!important;
+  flex:1 1 auto!important;
+  flex-direction:column!important;
+  position:relative!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  max-height:100%!important;
+  margin:0!important;
+  background:#080808!important;
+  overflow:hidden!important;
+}
+
+.messages-panel.chat-open>.chat-window .chat-head{
+  flex:0 0 58px!important;
+  height:58px!important;
+  min-height:58px!important;
+  padding:0 10px!important;
+  position:relative!important;
+  z-index:3!important;
+  background:#0b0b0b!important;
+  border-bottom:1px solid #202020!important;
+}
+
+.messages-panel.chat-open>.chat-window .chat-head .conversation-avatar{
+  width:36px!important;
+  height:36px!important;
+  flex-basis:36px!important;
+}
+
+.messages-panel.chat-open>.chat-window .chat-head-copy{
+  min-width:0!important;
+  flex:1 1 auto!important;
+  overflow:hidden!important;
+}
+
+.messages-panel.chat-open>.chat-window .chat-call-actions{
+  flex:0 0 auto!important;
+  gap:2px!important;
+  padding:2px!important;
+}
+
+.messages-panel.chat-open>.chat-window .chat-call-actions .messages-icon-button{
+  width:34px!important;
+  height:34px!important;
+  flex-basis:34px!important;
+}
+
+.messages-panel.chat-open>.chat-window .message-stream{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  height:auto!important;
+  max-height:none!important;
+  padding:12px 10px 10px!important;
+  margin:0!important;
+  position:relative!important;
+  z-index:2!important;
+  background:#080808!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+
+.messages-panel.chat-open>.chat-window .message-row{max-width:100%!important}
+.messages-panel.chat-open>.chat-window .message-bubble{max-width:82%!important;word-break:break-word!important}
+
+.messages-panel.chat-open>.chat-window .reply-banner{
+  flex:0 0 auto!important;
+  min-height:42px!important;
+  max-height:56px!important;
+  overflow:hidden!important;
+  padding:7px 10px!important;
+}
+
+.messages-panel.chat-open>.chat-window .message-composer{
+  flex:0 0 58px!important;
+  height:58px!important;
+  min-height:58px!important;
+  max-height:58px!important;
+  padding:7px 8px!important;
+  position:relative!important;
+  z-index:3!important;
+  background:#0b0b0b!important;
+  border-top:1px solid #202020!important;
+}
+
+.messages-panel.chat-open>.chat-window .message-composer input{
+  min-width:0!important;
+  height:42px!important;
+}
+
+.messages-panel.chat-open>.chat-window .message-composer .messages-icon-button{
+  width:36px!important;
+  height:36px!important;
+  flex:0 0 36px!important;
+}
+
+.messages-panel.chat-open>.chat-window .message-composer .send-button{
+  width:40px!important;
+  height:40px!important;
+  flex:0 0 40px!important;
+}
+
+@media(max-width:760px){
+  .messages-panel.chat-open{
+    width:100%!important;
+    height:100svh!important;
+    max-height:100svh!important;
+  }
+
+  .messages-panel.chat-open>.chat-window{
+    height:100%!important;
+    max-height:100%!important;
+  }
+
+  .messages-panel.chat-open>.chat-window .chat-head{
+    flex-basis:calc(58px + env(safe-area-inset-top))!important;
+    height:calc(58px + env(safe-area-inset-top))!important;
+    min-height:calc(58px + env(safe-area-inset-top))!important;
+    padding-top:env(safe-area-inset-top)!important;
+  }
+
+  .messages-panel.chat-open>.chat-window .message-stream{
+    padding-bottom:8px!important;
+  }
+
+  .messages-panel.chat-open>.chat-window .message-composer{
+    flex-basis:calc(58px + env(safe-area-inset-bottom))!important;
+    height:calc(58px + env(safe-area-inset-bottom))!important;
+    min-height:calc(58px + env(safe-area-inset-bottom))!important;
+    max-height:calc(58px + env(safe-area-inset-bottom))!important;
+    padding-bottom:max(7px,env(safe-area-inset-bottom))!important;
+  }
+}
