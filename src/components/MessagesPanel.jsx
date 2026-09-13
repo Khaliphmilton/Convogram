@@ -11,6 +11,8 @@ export function MessagesPanel(props) {
 
     let timer = null;
     let longPressed = false;
+    let startX = 0;
+    let startY = 0;
 
     const clearTimer = () => {
       if (timer) window.clearTimeout(timer);
@@ -22,25 +24,32 @@ export function MessagesPanel(props) {
       if (!row || !host.contains(row)) return;
       clearTimer();
       longPressed = false;
+      const point = event.touches?.[0];
+      startX = point?.clientX || 0;
+      startY = point?.clientY || 0;
       timer = window.setTimeout(() => {
         longPressed = true;
       }, 650);
     };
 
-    const onTouchMove = () => {
-      if (!longPressed) clearTimer();
+    const onTouchMove = (event) => {
+      if (longPressed || !timer) return;
+      const point = event.touches?.[0];
+      if (!point) return;
+      const dx = point.clientX - startX;
+      const dy = point.clientY - startY;
+      if (Math.hypot(dx, dy) > 18) clearTimer();
     };
 
     const onTouchEnd = () => {
       if (longPressed) {
-        // The original chat component opens its long-press menu on this gesture.
-        // Keep the synthetic follow-up click from immediately closing that menu.
+        // Keep this guard alive long enough to block Android's synthetic click.
         window.setTimeout(() => {
           longPressed = false;
-        }, 0);
-      } else {
-        clearTimer();
+        }, 600);
+        return;
       }
+      clearTimer();
     };
 
     const onClickCapture = (event) => {
