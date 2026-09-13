@@ -1,0 +1,87 @@
+name: Build Installable Convogram Release APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Install SVG converter
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
+
+      - name: Generate Convogram launcher icon
+        run: node scripts/generate-android-icon.mjs
+
+      - name: Add Android permissions
+        run: node scripts/add-android-permissions.mjs
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Configure installable release signing
+        working-directory: android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle')
+          text = p.read_text()
+          if 'signingConfig signingConfigs.debug' not in text:
+              text += '\nandroid {\n    buildTypes {\n        release {\n            signingConfig signingConfigs.debug\n        }\n    }\n}\n'
+          p.write_text(text)
+          PY
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Prepare installable APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk Convogram.apk
+
+      - name: Verify APK
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose Convogram.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: convogram-${{ github.run_number }}-release
+          name: Convogram Android ${{ github.run_number }} Release
+          body: |
+            ## Convogram Android — Installable Release APK
+
+            This is the Android release build, not the debug variant.
+
+            Download **Convogram.apk** and install it on Android.
+          files: Convogram.apk
+          generate_release_notes: true
+          make_latest: true
