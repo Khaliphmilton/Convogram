@@ -24,11 +24,25 @@ jobs:
         run: npm run build
       - name: Add Android platform
         run: npx cap add android
-      - name: Apply Convogram Android icon and splash branding
+      - name: Prepare real Android branding assets
         run: |
           set -euo pipefail
-          npm install --no-save @capacitor/assets@latest
-          npx @capacitor/assets generate --android --assetPath assets --iconBackgroundColor '#061945' --iconBackgroundColorDark '#00091f' --splashBackgroundColor '#061945' --splashBackgroundColorDark '#00091f' --logoSplashScale 0.18
+          npm install --no-save @capacitor/assets@latest sharp
+          node - <<'NODE'
+          const sharp = require('sharp');
+          (async () => {
+            await sharp('assets/icon.svg').png().resize(1024, 1024).toFile('assets/icon.png');
+            await sharp('assets/icon.svg').png().resize(1024, 1024).toFile('assets/splash.png');
+          })().catch(err => { console.error(err); process.exit(1); });
+          NODE
+          test -s assets/icon.png
+          test -s assets/splash.png
+      - name: Generate native Android icon and splash resources
+        run: |
+          set -euo pipefail
+          npx @capacitor/assets generate --android --assetPath assets --iconBackgroundColor '#071426' --iconBackgroundColorDark '#020713' --splashBackgroundColor '#071426' --splashBackgroundColorDark '#020713' --logoSplashScale 0.24
+          test -d android/app/src/main/res
+          find android/app/src/main/res -type f \( -name 'ic_launcher*' -o -name 'splash*' \) | head -30
       - name: Add Android camera microphone and storage permissions
         run: node scripts/add-android-permissions.mjs
       - name: Sync Capacitor
@@ -105,7 +119,7 @@ jobs:
         with:
           tag_name: convogram-${{ github.run_number }}
           name: Convogram Android ${{ github.run_number }}
-          body: Signed release APK using Convogram's permanent signing key, with branded icon and splash screen.
+          body: Signed release APK using Convogram's permanent signing key, with native Convogram icon and splash screen.
           files: Convogram.apk
           generate_release_notes: true
           make_latest: true
