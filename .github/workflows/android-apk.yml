@@ -30,6 +30,9 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Add Android camera microphone and storage permissions
+        run: node scripts/add-android-permissions.mjs
+
       - name: Sync Capacitor
         run: npx cap sync android
 
