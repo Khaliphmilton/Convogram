@@ -7,7 +7,9 @@ const output = path.resolve('android/app/src/main/res');
 if (!fs.existsSync(source)) throw new Error(`Missing ${source}`);
 fs.mkdirSync(output, { recursive: true });
 
-for (const dir of ['mipmap-anydpi', 'mipmap-anydpi-v26']) {
+// Remove every generated launcher/splash definition first so Capacitor's
+// default adaptive icon cannot survive into the release APK.
+for (const dir of ['mipmap-anydpi', 'mipmap-anydpi-v26', 'drawable', 'drawable-v21', 'drawable-v24']) {
   fs.rmSync(path.join(output, dir), { recursive: true, force: true });
 }
 
@@ -20,13 +22,9 @@ for (const [density, size] of Object.entries(sizes)) {
   }
 }
 
-// Android's generated theme still expects a drawable named "splash".
-// Keep that resource, but generate it from the Convogram logo rather than
-// using Capacitor's default artwork or SplashScreen plugin assets.
+// The release build uses a Convogram-only splash drawable. No Capacitor
+// splash-screen artwork is copied or referenced.
 const drawable = path.join(output, 'drawable');
 fs.mkdirSync(drawable, { recursive: true });
 execFileSync('rsvg-convert', ['-w', '512', '-h', '512', '-o', path.join(drawable, 'splash.png'), source]);
-
-for (const name of ['splash.xml', 'splash_background.xml', 'capacitor_splash_screen.xml']) {
-  fs.rmSync(path.join(drawable, name), { force: true });
-}
+console.log('Convogram Android icon and splash assets generated.');
