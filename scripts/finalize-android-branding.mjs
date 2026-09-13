@@ -22,11 +22,7 @@ function walk(dir) {
 // Remove every Capacitor-generated branding/splash asset.
 for (const file of walk(res)) {
   const name = path.basename(file).toLowerCase();
-  if (
-    name.includes('capacitor') ||
-    name.includes('splash_screen') ||
-    name === 'capacitor_splash_screen.xml'
-  ) {
+  if (name.includes('capacitor') || name.includes('splash_screen') || name === 'capacitor_splash_screen.xml') {
     fs.rmSync(file, { force: true });
   }
 }
@@ -99,7 +95,7 @@ fs.writeFileSync(path.join(valuesV31, 'convogram_launch.xml'), v31Style);
 
 // Force the generated Activity to use the explicit Convogram launch theme.
 let manifest = fs.readFileSync(manifestPath, 'utf8');
-manifest = manifest.replace(/android:theme="@style/[^"]+"/g, 'android:theme="@style/ConvogramLaunchTheme"');
+manifest = manifest.replace(/android:theme="@style\/[^"]+"/g, 'android:theme="@style/ConvogramLaunchTheme"');
 if (!manifest.includes('android:theme="@style/ConvogramLaunchTheme"')) {
   manifest = manifest.replace('<application', '<application android:theme="@style/ConvogramLaunchTheme"');
 }
