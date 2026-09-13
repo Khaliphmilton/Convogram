@@ -11,37 +11,28 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install dependencies
         run: npm install
-
       - name: Build web app
         run: npm run build
-
       - name: Add Android platform
         run: npx cap add android
-
       - name: Add Android camera microphone and storage permissions
         run: node scripts/add-android-permissions.mjs
-
       - name: Sync Capacitor
         run: npx cap sync android
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
       - name: Configure permanent release signing
         working-directory: android
         env:
@@ -51,141 +42,66 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "ANDROID_KEYSTORE_BASE64 is empty"; exit 1; }
-          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "ANDROID_KEYSTORE_PASSWORD is empty"; exit 1; }
-          test -n "$ANDROID_KEY_ALIAS" || { echo "ANDROID_KEY_ALIAS is empty"; exit 1; }
-          test -n "$ANDROID_KEY_PASSWORD" || { echo "ANDROID_KEY_PASSWORD is empty"; exit 1; }
-
-          # Normalize pasted Base64 safely. GitHub secret values may contain
-          # line breaks or surrounding whitespace. Remove all whitespace and
-          # restore standard padding before decoding.
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\r\n\t ' > convogram-keystore.b64
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' > convogram-keystore.b64
           python3 - <<'PY'
           import base64, binascii
           from pathlib import Path
-          s = Path('convogram-keystore.b64').read_text()
-          if not s:
-              raise SystemExit('Keystore Base64 is empty after normalization')
+          s=Path('convogram-keystore.b64').read_text().strip()
           s += '=' * (-len(s) % 4)
           try:
-              data = base64.b64decode(s, validate=True)
-          except (binascii.Error, ValueError) as e:
-              raise SystemExit(f'Invalid keystore Base64: {e}')
+              data=base64.b64decode(s, validate=True)
+          except binascii.Error as e:
+              raise SystemExit(f'Invalid Base64 keystore secret: {e}')
           Path('convogram-source.keystore').write_bytes(data)
           PY
-          test -s convogram-source.keystore || { echo "Decoded keystore is empty"; exit 1; }
-
-          echo "Detecting permanent Convogram keystore format and password..."
+          test -s convogram-source.keystore
           STORE_TYPE=""
           STORE_PASSWORD=""
+          for p in "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD"; do
+            if keytool -list -keystore convogram-source.keystore -storetype PKCS12 -storepass "$p" >/dev/null 2>&1; then STORE_TYPE=PKCS12; STORE_PASSWORD="$p"; break; fi
+            if keytool -list -keystore convogram-source.keystore -storetype JKS -storepass "$p" >/dev/null 2>&1; then STORE_TYPE=JKS; STORE_PASSWORD="$p"; break; fi
+          done
+          test -n "$STORE_TYPE" || { echo 'GitHub keystore/password mismatch.'; exit 1; }
+          keytool -list -keystore convogram-source.keystore -storetype "$STORE_TYPE" -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
           KEY_PASSWORD=""
-
-          for candidate_store in "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD"; do
-            if keytool -list -keystore convogram-source.keystore -storetype PKCS12 -storepass "$candidate_store" >/dev/null 2>&1; then
-              STORE_TYPE="PKCS12"
-              STORE_PASSWORD="$candidate_store"
-              break
-            fi
-            if keytool -list -keystore convogram-source.keystore -storetype JKS -storepass "$candidate_store" >/dev/null 2>&1; then
-              STORE_TYPE="JKS"
-              STORE_PASSWORD="$candidate_store"
-              break
-            fi
+          for p in "$ANDROID_KEY_PASSWORD" "$ANDROID_KEYSTORE_PASSWORD"; do
+            rm -f convogram-release.jks
+            if keytool -importkeystore -noprompt -srckeystore convogram-source.keystore -srcstoretype "$STORE_TYPE" -srcstorepass "$STORE_PASSWORD" -srcalias "$ANDROID_KEY_ALIAS" -srckeypass "$p" -destkeystore convogram-release.jks -deststoretype JKS -deststorepass "$STORE_PASSWORD" -destalias "$ANDROID_KEY_ALIAS" -destkeypass "$p" >/dev/null 2>&1; then KEY_PASSWORD="$p"; break; fi
           done
-
-          if [ -z "$STORE_TYPE" ]; then
-            echo "The supplied permanent keystore could not be opened with either configured password secret."
-            echo "No new signing key will be created."
-            exit 1
-          fi
-
-          keytool -list -keystore convogram-source.keystore -storetype "$STORE_TYPE" \
-            -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
-
-          for candidate_key in "$ANDROID_KEY_PASSWORD" "$ANDROID_KEYSTORE_PASSWORD"; do
-            if [ "$STORE_TYPE" = "PKCS12" ]; then
-              if keytool -importkeystore -noprompt \
-                -srckeystore convogram-source.keystore -srcstoretype PKCS12 \
-                -srcstorepass "$STORE_PASSWORD" -srcalias "$ANDROID_KEY_ALIAS" \
-                -srckeypass "$candidate_key" -destkeystore convogram-release.jks \
-                -deststoretype JKS -deststorepass "$STORE_PASSWORD" \
-                -destalias "$ANDROID_KEY_ALIAS" -destkeypass "$candidate_key" >/dev/null 2>&1; then
-                KEY_PASSWORD="$candidate_key"
-                break
-              fi
-              rm -f convogram-release.jks
-            else
-              rm -f key-test.p12 convogram-release.jks
-              if keytool -importkeystore -noprompt \
-                -srckeystore convogram-source.keystore -srcstoretype JKS \
-                -srcstorepass "$STORE_PASSWORD" -srcalias "$ANDROID_KEY_ALIAS" \
-                -srckeypass "$candidate_key" -destkeystore key-test.p12 \
-                -deststoretype PKCS12 -deststorepass "$STORE_PASSWORD" \
-                -destalias "$ANDROID_KEY_ALIAS" -destkeypass "$candidate_key" >/dev/null 2>&1; then
-                cp convogram-source.keystore convogram-release.jks
-                KEY_PASSWORD="$candidate_key"
-                rm -f key-test.p12
-                break
-              fi
-              rm -f key-test.p12
-            fi
-          done
-
-          if [ -z "$KEY_PASSWORD" ]; then
-            echo "The keystore opens, but neither configured password could unlock its convogram key entry."
-            exit 1
-          fi
-
-          keytool -list -keystore convogram-release.jks -storetype JKS \
-            -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
-          echo "Permanent signing key validated successfully."
-
+          test -n "$KEY_PASSWORD" || { echo 'Keystore opens, but key password is incorrect.'; exit 1; }
+          keytool -list -keystore convogram-release.jks -storetype JKS -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
           {
-            echo ''
             echo 'android {'
-            echo '    signingConfigs {'
-            echo '        release {'
-            echo '            storeFile file("../convogram-release.jks")'
-            echo '            storePassword System.getenv("CONVOGRAM_STORE_PASSWORD")'
-            echo '            keyAlias System.getenv("CONVOGRAM_KEY_ALIAS")'
-            echo '            keyPassword System.getenv("CONVOGRAM_KEY_PASSWORD")'
-            echo '            storeType "JKS"'
-            echo '        }'
-            echo '    }'
-            echo '    buildTypes {'
-            echo '        release {'
-            echo '            signingConfig signingConfigs.release'
-            echo '        }'
-            echo '    }'
+            echo ' signingConfigs { release {'
+            echo '  storeFile file("../convogram-release.jks")'
+            echo '  storePassword System.getenv("CONVOGRAM_STORE_PASSWORD")'
+            echo '  keyAlias System.getenv("CONVOGRAM_KEY_ALIAS")'
+            echo '  keyPassword System.getenv("CONVOGRAM_KEY_PASSWORD")'
+            echo '  storeType "JKS"'
+            echo ' } }'
+            echo ' buildTypes { release { signingConfig signingConfigs.release } }'
             echo '}'
           } >> app/build.gradle
-
           echo "CONVOGRAM_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "CONVOGRAM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "CONVOGRAM_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
-
       - name: Build signed release APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
-
       - name: Prepare APK
         run: cp android/app/build/outputs/apk/release/app-release.apk Convogram.apk
-
       - name: Verify APK signature
-        run: |
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose Convogram.apk
-
+        run: $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose Convogram.apk
       - name: Create permanent GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: convogram-${{ github.run_number }}
           name: Convogram Android ${{ github.run_number }}
-          body: |
-            ## Convogram Android
-
-            This is the signed release APK. It is signed with Convogram's permanent release key so future updates can install over this version.
-
-            **APK:** Convogram.apk
+          body: Signed release APK using Convogram's permanent signing key.
           files: Convogram.apk
           generate_release_notes: true
           make_latest: true
