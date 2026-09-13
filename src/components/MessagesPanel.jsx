@@ -8,57 +8,97 @@ import "./MessageLongPressMenu.css";
 
 const REACTIONS = ["❤️", "😊", "😂", "💪", "👍"];
 
+function looksLikeMessage(value) {
+  return Boolean(value && typeof value === "object" && typeof value.id === "string" && typeof value.sender_id === "string" && ("content" in value || "message_type" in value || "media_url" in value));
+}
+
+function findMessage(value, depth = 0, seen = new Set()) {
+  if (!value || depth > 3 || (typeof value === "object" && seen.has(value))) return null;
+  if (typeof value === "object") seen.add(value);
+  if (looksLikeMessage(value)) return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findMessage(item, depth + 1, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== "object") return null;
+  const preferred = ["message", "item", "msg", "currentMessage", "data"];
+  for (const key of preferred) {
+    const found = findMessage(value[key], depth + 1, seen);
+    if (found) return found;
+  }
+  if (depth < 2) {
+    for (const key of Object.keys(value)) {
+      if (preferred.includes(key)) continue;
+      const found = findMessage(value[key], depth + 1, seen);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function getFiber(element) {
+  const key = Object.keys(element || {}).find((k) => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+  return key ? element[key] : null;
+}
+
+function findMessageTarget(target, host) {
+  let element = target instanceof Element ? target : target?.parentElement;
+  while (element && element !== host) {
+    const fiber = getFiber(element);
+    if (fiber) {
+      const message = findMessage(fiber.memoizedProps) || findMessage(fiber.pendingProps);
+      if (message?.id) return { element, message };
+      if (fiber.key != null && typeof fiber.key === "string") {
+        const key = fiber.key;
+        if (looksLikeMessage({ id: key, sender_id: "", content: "" })) return { element, message: null };
+      }
+    }
+    element = element.parentElement;
+  }
+  return null;
+}
+
 export function MessagesPanel(props) {
   const hostRef = useRef(null);
   const [menu, setMenu] = useState(null);
   const [busy, setBusy] = useState(false);
-  const pressRef = useRef({ timer: null, row: null, triggered: false, x: 0, y: 0 });
+  const pressRef = useRef({ timer: null, element: null, message: null, triggered: false, x: 0, y: 0 });
 
   const clearPress = () => {
     if (pressRef.current.timer) window.clearTimeout(pressRef.current.timer);
-    pressRef.current.timer = null;
-    pressRef.current.row = null;
-    pressRef.current.triggered = false;
+    pressRef.current = { timer: null, element: null, message: null, triggered: false, x: 0, y: 0 };
   };
 
-  const getReactKey = (row) => {
-    const fiberProp = Object.keys(row || {}).find(k => k.startsWith("__reactFiber$"));
-    let fiber = fiberProp ? row[fiberProp] : null;
-    for (let i = 0; fiber && i < 12; i += 1) {
-      if (fiber.key != null) return String(fiber.key);
-      fiber = fiber.return;
-    }
-    return null;
-  };
-
-  const getMessage = (row) => {
-    const cached = row?.__convogramMessage;
-    if (cached?.id) return cached;
-    try { return row?.dataset?.message ? JSON.parse(row.dataset.message) : null; } catch (_) { return null; }
-  };
-
-  const openMenu = (row) => {
-    const message = getMessage(row);
+  const openMenu = (element, message) => {
     if (!message?.id) return;
-    const rect = row.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
     const menuWidth = 230;
+    const menuHeight = Math.min(440, window.innerHeight - 20);
     const left = Math.max(10, Math.min(window.innerWidth - menuWidth - 10, rect.left + rect.width / 2 - menuWidth / 2));
-    const top = Math.max(10, Math.min(window.innerHeight - 430, rect.top - 8));
-    setMenu({ message, left, top });
+    let top = rect.top - menuHeight - 8;
+    if (top < 10) top = Math.min(window.innerHeight - menuHeight - 10, rect.bottom + 8);
+    setMenu({ message, element, left, top });
   };
 
   const beginPress = (event) => {
-    const row = event.target?.closest?.(".message-row");
-    if (!row || !hostRef.current?.contains(row)) return;
+    const host = hostRef.current;
+    if (!host || event.target?.closest?.(".convogram-longpress-menu")) return;
+    const found = findMessageTarget(event.target, host);
+    if (!found?.message?.id) return;
     clearPress();
     const point = event.touches?.[0];
-    pressRef.current.row = row;
+    pressRef.current.element = found.element;
+    pressRef.current.message = found.message;
     pressRef.current.x = point?.clientX ?? event.clientX ?? 0;
     pressRef.current.y = point?.clientY ?? event.clientY ?? 0;
     pressRef.current.timer = window.setTimeout(() => {
       pressRef.current.triggered = true;
-      openMenu(row);
-    }, 620);
+      try { navigator.vibrate?.(18); } catch (_) {}
+      openMenu(found.element, found.message);
+    }, 600);
   };
 
   const movePress = (event) => {
@@ -82,11 +122,11 @@ export function MessagesPanel(props) {
     const host = hostRef.current;
     if (!host) return undefined;
     const onContext = (event) => {
-      const row = event.target?.closest?.(".message-row");
-      if (!row || !host.contains(row)) return;
+      const found = findMessageTarget(event.target, host);
+      if (!found?.message?.id) return;
       event.preventDefault();
       event.stopPropagation();
-      openMenu(row);
+      openMenu(found.element, found.message);
     };
     const onClick = (event) => {
       if (menu && !event.target.closest?.(".convogram-longpress-menu")) setMenu(null);
@@ -102,7 +142,6 @@ export function MessagesPanel(props) {
     host.addEventListener("touchcancel", clearPress, { capture: true, passive: true });
     host.addEventListener("mousedown", beginPress, true);
     host.addEventListener("mouseup", endPress, true);
-    host.addEventListener("mouseleave", clearPress, true);
     host.addEventListener("contextmenu", onContext, true);
     host.addEventListener("click", onClick, true);
     host.addEventListener("scroll", onScroll, true);
@@ -115,7 +154,6 @@ export function MessagesPanel(props) {
       host.removeEventListener("touchcancel", clearPress, true);
       host.removeEventListener("mousedown", beginPress, true);
       host.removeEventListener("mouseup", endPress, true);
-      host.removeEventListener("mouseleave", clearPress, true);
       host.removeEventListener("contextmenu", onContext, true);
       host.removeEventListener("click", onClick, true);
       host.removeEventListener("scroll", onScroll, true);
@@ -123,43 +161,34 @@ export function MessagesPanel(props) {
     };
   }, [menu]);
 
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    host.querySelectorAll(".message-row").forEach((row) => {
-      const bubble = row.querySelector(".message-bubble");
-      const text = bubble?.querySelector(".message-text")?.textContent || "";
-      const media = bubble?.querySelector("img, video, audio");
-      row.__convogramMessage = {
-        id: getReactKey(row),
-        sender_id: row.classList.contains("mine") ? props.userId : "other",
-        content: text,
-        message_type: media?.tagName?.toLowerCase() === "video" ? "video" : media?.tagName?.toLowerCase() === "img" ? "image" : media?.tagName?.toLowerCase() === "audio" ? "audio" : "text",
-        media_url: media?.currentSrc || media?.src || null,
-        is_deleted: Boolean(bubble?.querySelector(".message-deleted"))
-      };
-    });
-  });
-
   const close = () => { setMenu(null); setBusy(false); };
+
+  const messageText = (message) => message.content || (message.message_type === "image" ? "Photo" : message.message_type === "video" ? "Video" : message.message_type === "audio" ? "Voice message" : "Attachment");
 
   const copyMessage = async () => {
     if (!menu?.message) return;
-    const value = menu.message.content || (menu.message.message_type === "image" ? "Photo" : menu.message.message_type === "video" ? "Video" : menu.message.message_type === "audio" ? "Voice message" : "Attachment");
-    try { await navigator.clipboard.writeText(value); close(); } catch (_) { setBusy(false); }
+    try { await navigator.clipboard.writeText(messageText(menu.message)); close(); }
+    catch (_) { setBusy(false); }
   };
 
   const replyMessage = () => {
-    const row = [...(hostRef.current?.querySelectorAll(".message-row") || [])].find(r => r.__convogramMessage?.id === menu?.message?.id);
-    if (!row) return;
-    const x = row.getBoundingClientRect().left + 10;
+    const target = menu?.element;
+    if (!target) return;
+    const message = menu.message;
     try {
-      const makeTouch = (clientX) => new Touch({ identifier: Date.now(), target: row, clientX, clientY: 100 });
-      row.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, touches: [makeTouch(x)], changedTouches: [makeTouch(x)] }));
-      row.dispatchEvent(new TouchEvent("touchend", { bubbles: true, touches: [], changedTouches: [makeTouch(x + 90)] }));
-    } catch (_) {
-      row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-    }
+      const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
+      const touchEnd = new Event("touchend", { bubbles: true, cancelable: true });
+      const startX = Math.max(1, target.getBoundingClientRect().left + 10);
+      const endX = startX + 100;
+      const makeTouch = (x) => ({ identifier: Date.now(), target, clientX: x, clientY: target.getBoundingClientRect().top + 20, pageX: x, pageY: 20, screenX: x, screenY: 20 });
+      Object.defineProperty(touchStart, "touches", { value: [makeTouch(startX)] });
+      Object.defineProperty(touchStart, "changedTouches", { value: [makeTouch(startX)] });
+      Object.defineProperty(touchEnd, "touches", { value: [] });
+      Object.defineProperty(touchEnd, "changedTouches", { value: [makeTouch(endX)] });
+      target.dispatchEvent(touchStart);
+      target.dispatchEvent(touchEnd);
+      try { window.dispatchEvent(new CustomEvent("convogram_reply_requested", { detail: message })); } catch (_) {}
+    } catch (_) {}
     close();
   };
 
@@ -176,16 +205,19 @@ export function MessagesPanel(props) {
   };
 
   const editMessage = () => {
-    const row = [...(hostRef.current?.querySelectorAll(".message-row") || [])].find(r => r.__convogramMessage?.id === menu?.message?.id);
-    row?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-    window.setTimeout(() => row?.querySelector('button[aria-label="Edit message"]')?.click(), 0);
+    if (menu?.message?.sender_id !== props.userId || !menu?.element) return;
+    menu.element.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    window.setTimeout(() => document.querySelector('button[aria-label="Edit message"]')?.click(), 50);
     close();
   };
 
   const forwardMessage = async () => {
     if (!menu?.message) return;
-    const value = menu.message.content || (menu.message.media_url || "Attachment");
-    try { if (navigator.share) await navigator.share({ title: "Convogram message", text: value }); else await navigator.clipboard.writeText(value); } catch (_) {}
+    const value = messageText(menu.message);
+    try {
+      if (navigator.share) await navigator.share({ title: "Convogram message", text: value });
+      else await navigator.clipboard.writeText(value);
+    } catch (_) {}
     close();
   };
 
@@ -194,29 +226,40 @@ export function MessagesPanel(props) {
     try {
       setBusy(true);
       const { data: existing } = await supabase.from("message_pins").select("message_id").eq("message_id", menu.message.id).eq("pinned_by", props.userId).maybeSingle();
-      if (existing) await supabase.from("message_pins").delete().eq("message_id", menu.message.id).eq("pinned_by", props.userId);
-      else await supabase.from("message_pins").insert({ message_id: menu.message.id, pinned_by: props.userId });
+      if (existing) {
+        const { error } = await supabase.from("message_pins").delete().eq("message_id", menu.message.id).eq("pinned_by", props.userId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("message_pins").insert({ message_id: menu.message.id, pinned_by: props.userId });
+        if (error) throw error;
+      }
       close();
     } catch (e) { console.warn("Convogram pin failed", e); setBusy(false); }
   };
 
   const reportMessage = async () => {
     if (!menu?.message?.id || !props.userId || menu.message.sender_id === props.userId) return;
-    try { setBusy(true); await supabase.from("message_reports").insert({ message_id: menu.message.id, reporter_id: props.userId, reason: "other" }); close(); }
-    catch (e) { console.warn("Convogram report failed", e); setBusy(false); }
+    try {
+      setBusy(true);
+      const { error } = await supabase.from("message_reports").insert({ message_id: menu.message.id, reporter_id: props.userId, reason: "other" });
+      if (error) throw error;
+      close();
+    } catch (e) { console.warn("Convogram report failed", e); setBusy(false); }
   };
 
   return <div ref={hostRef} style={{ display: "contents" }}>
     <OriginalMessagesPanel {...props} />
     {menu && <div className="convogram-longpress-menu" style={{ left: menu.left, top: menu.top }} role="menu" onClick={(e) => e.stopPropagation()}>
-      <div className="convogram-longpress-reactions">{REACTIONS.map(r => <button key={r} type="button" disabled={busy} onClick={() => reactMessage(r)}>{r}</button>)}</div>
-      <button type="button" onClick={replyMessage}>↩ <span>Reply</span></button>
-      <button type="button" onClick={copyMessage}>▣ <span>Copy</span></button>
-      <button type="button" onClick={forwardMessage}>↗ <span>Forward</span></button>
-      <button type="button" onClick={togglePin} disabled={busy}>📌 <span>Pin / Unpin</span></button>
-      {menu.message.sender_id === props.userId && !menu.message.is_deleted && <button type="button" onClick={editMessage}>✎ <span>Edit</span></button>}
-      {menu.message.sender_id === props.userId && !menu.message.is_deleted && <button type="button" className="danger" onClick={deleteMsg} disabled={busy}>⌫ <span>Delete</span></button>}
-      {menu.message.sender_id !== props.userId && <button type="button" className="danger" onClick={reportMessage} disabled={busy}>⚑ <span>Report</span></button>}
+      <div className="convogram-longpress-reactions">
+        {REACTIONS.map((r) => <button key={r} type="button" disabled={busy} onClick={() => reactMessage(r)} aria-label={`React ${r}`}>{r}</button>)}
+      </div>
+      <button type="button" onClick={replyMessage}><span>↩</span><span>Reply</span></button>
+      <button type="button" onClick={copyMessage}><span>▣</span><span>Copy</span></button>
+      <button type="button" onClick={forwardMessage}><span>↗</span><span>Forward</span></button>
+      <button type="button" onClick={togglePin} disabled={busy}><span>📌</span><span>Pin / Unpin</span></button>
+      {menu.message.sender_id === props.userId && !menu.message.is_deleted && <button type="button" onClick={editMessage}><span>✎</span><span>Edit</span></button>}
+      {menu.message.sender_id === props.userId && !menu.message.is_deleted && <button type="button" className="danger" onClick={deleteMsg} disabled={busy}><span>⌫</span><span>Delete</span></button>}
+      {menu.message.sender_id !== props.userId && <button type="button" className="danger" onClick={reportMessage} disabled={busy}><span>⚑</span><span>Report</span></button>}
     </div>}
   </div>;
 }
