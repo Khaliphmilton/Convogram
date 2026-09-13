@@ -22,10 +22,6 @@ export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSa
     const account = { id: profile?.id, display_name: displayName, username, email: email || "" };
     if (account.id) saveAccount(account);
     setSavedAccounts(readSavedAccounts());
-
-    // Open the switcher after mounting. Doing this in an effect avoids the
-    // React StrictMode double-initialization issue that could consume the flag
-    // before the screen became visible.
     try {
       if (sessionStorage.getItem("convogram:open-switch-account") === "1") {
         sessionStorage.removeItem("convogram:open-switch-account");
@@ -37,7 +33,25 @@ export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSa
   const emailUs = (subject) => { window.location.href = `mailto:khaliphindustries@gmail.com?subject=${encodeURIComponent(subject)}`; };
   function openSwitcher() { setSavedAccounts(readSavedAccounts()); setSelectedAccount(null); setSwitchPassword(""); setSwitchError(""); setSwitcherOpen(true); }
   function chooseAccount(account) { if (account.id === profile?.id) { setSwitcherOpen(false); return; } setSelectedAccount(account); setSwitchPassword(""); setSwitchError(""); }
-  async function switchToAccount() { if (!selectedAccount?.email || !switchPassword) return; setSwitching(true); setSwitchError(""); const { error } = await supabase.auth.signInWithPassword({ email: selectedAccount.email, password: switchPassword }); if (error) setSwitchError(error.message || "Could not switch accounts."); else { saveAccount(selectedAccount); setSwitcherOpen(false); } setSwitching(false); }
+
+  async function switchToAccount() {
+    if (!selectedAccount?.email || !switchPassword) return;
+    setSwitching(true);
+    setSwitchError("");
+    const { error } = await supabase.auth.signInWithPassword({ email: selectedAccount.email, password: switchPassword });
+    if (error) {
+      setSwitchError(error.message || "Could not switch accounts.");
+      setSwitching(false);
+      return;
+    }
+
+    // The auth session has changed. Fully remount Convogram so no React state,
+    // viewed profile, feed, notifications, messages, or cached UI from the
+    // previous account can survive the switch.
+    saveAccount(selectedAccount);
+    setSwitcherOpen(false);
+    window.location.reload();
+  }
 
   return <section className="page profile-options-page">
     <header className="profile-options-head"><button className="profile-options-back" onClick={onBack} aria-label="Back"><ArrowLeft size={20} /></button><div><small>ACCOUNT</small><h1>Menu</h1></div></header>
