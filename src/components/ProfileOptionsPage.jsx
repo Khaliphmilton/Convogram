@@ -6,9 +6,10 @@ import "./ProfileOptionsPage.css";
 const SAVED_ACCOUNTS_KEY = "convogram_saved_accounts";
 function readSavedAccounts() { try { return JSON.parse(localStorage.getItem(SAVED_ACCOUNTS_KEY) || "[]"); } catch { return []; } }
 function saveAccount(account) { if (!account?.id) return; const current = readSavedAccounts().filter((item) => item.id !== account.id); localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify([{ id: account.id, display_name: account.display_name || "Convogram User", username: account.username || "user", email: account.email || "" }, ...current].slice(0, 5))); }
+function consumeDirectSwitchFlag() { try { const open = sessionStorage.getItem("convogram:open-switch-account") === "1"; if (open) sessionStorage.removeItem("convogram:open-switch-account"); return open; } catch { return false; } }
 
-export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSaved, onEditProfile, onSettings, onLogout, openSwitchAccount = false }) {
-  const [switcherOpen, setSwitcherOpen] = useState(openSwitchAccount);
+export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSaved, onEditProfile, onSettings, onLogout }) {
+  const [switcherOpen, setSwitcherOpen] = useState(consumeDirectSwitchFlag);
   const [savedAccounts, setSavedAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [switchPassword, setSwitchPassword] = useState("");
@@ -18,7 +19,6 @@ export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSa
   const username = profile?.username || "user";
   const initial = displayName.slice(0, 1).toUpperCase();
   useEffect(() => { const account = { id: profile?.id, display_name: displayName, username, email: email || "" }; if (account.id) saveAccount(account); setSavedAccounts(readSavedAccounts()); }, [profile?.id, displayName, username, email]);
-  useEffect(() => { if (openSwitchAccount) { setSavedAccounts(readSavedAccounts()); setSelectedAccount(null); setSwitchPassword(""); setSwitchError(""); setSwitcherOpen(true); } }, [openSwitchAccount]);
   const emailUs = (subject) => { window.location.href = `mailto:khaliphindustries@gmail.com?subject=${encodeURIComponent(subject)}`; };
   function openSwitcher() { setSavedAccounts(readSavedAccounts()); setSelectedAccount(null); setSwitchPassword(""); setSwitchError(""); setSwitcherOpen(true); }
   function chooseAccount(account) { if (account.id === profile?.id) { setSwitcherOpen(false); return; } setSelectedAccount(account); setSwitchPassword(""); setSwitchError(""); }
