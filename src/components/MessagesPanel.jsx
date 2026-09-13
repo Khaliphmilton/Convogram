@@ -97,8 +97,6 @@ export function MessagesPanel(props) {
   const [menu, setMenu] = useState(null);
   const [busy, setBusy] = useState(false);
   const pressRef = useRef({ timer: null, element: null, message: null, triggered: false, x: 0, y: 0 });
-  const chatHistoryRef = useRef(false);
-  const suppressPopRef = useRef(false);
 
   const clearPress = () => {
     if (pressRef.current.timer) window.clearTimeout(pressRef.current.timer);
@@ -198,53 +196,16 @@ export function MessagesPanel(props) {
     const host = hostRef.current;
     if (!host) return undefined;
 
-    const syncChatHistory = () => {
-      const backButton = findChatBackButton(host);
-      const chatOpen = Boolean(backButton);
-      if (chatOpen && !chatHistoryRef.current) {
-        window.history.pushState({ ...(window.history.state || {}), convogramChat: true }, "", window.location.href);
-        chatHistoryRef.current = true;
-      } else if (!chatOpen) {
-        chatHistoryRef.current = false;
-      }
-    };
-
-    const onPopState = () => {
-      if (suppressPopRef.current) {
-        suppressPopRef.current = false;
-        chatHistoryRef.current = false;
-        return;
-      }
+    const onPopState = (event) => {
       const backButton = findChatBackButton(host);
       if (!backButton) return;
+      event.stopImmediatePropagation?.();
+      window.history.pushState({ ...(window.history.state || {}), convogramChatGuard: true }, "", window.location.href);
       backButton.click();
     };
 
-    const onBackButtonClick = (event) => {
-      const button = event.target?.closest?.(".chat-back-button");
-      if (!button || button !== findChatBackButton(host)) return;
-      if (!chatHistoryRef.current) return;
-      window.setTimeout(() => {
-        if (!findChatBackButton(host) && chatHistoryRef.current) {
-          suppressPopRef.current = true;
-          window.history.back();
-        }
-      }, 0);
-    };
-
-    const observer = new MutationObserver(syncChatHistory);
-    observer.observe(host, { childList: true, subtree: true });
-    host.addEventListener("click", onBackButtonClick, true);
-    window.addEventListener("popstate", onPopState);
-    syncChatHistory();
-
-    return () => {
-      observer.disconnect();
-      host.removeEventListener("click", onBackButtonClick, true);
-      window.removeEventListener("popstate", onPopState);
-      chatHistoryRef.current = false;
-      suppressPopRef.current = false;
-    };
+    window.addEventListener("popstate", onPopState, true);
+    return () => window.removeEventListener("popstate", onPopState, true);
   }, []);
 
   const close = () => { setMenu(null); setBusy(false); };
