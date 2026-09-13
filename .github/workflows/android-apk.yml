@@ -56,7 +56,16 @@ jobs:
           test -n "$ANDROID_KEY_ALIAS" || { echo "ANDROID_KEY_ALIAS is empty"; exit 1; }
           test -n "$ANDROID_KEY_PASSWORD" || { echo "ANDROID_KEY_PASSWORD is empty"; exit 1; }
 
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > convogram-source.keystore
+          # GitHub secret values can contain wrapped/newline whitespace after pasting.
+          # Remove whitespace before decoding and accept missing Base64 padding.
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' > convogram-keystore.b64
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          s = Path('convogram-keystore.b64').read_text().strip()
+          s += '=' * (-len(s) % 4)
+          Path('convogram-source.keystore').write_bytes(base64.b64decode(s, validate=True))
+          PY
           test -s convogram-source.keystore || { echo "Decoded keystore is empty"; exit 1; }
 
           echo "Detecting permanent Convogram keystore format and password..."
@@ -64,8 +73,6 @@ jobs:
           STORE_PASSWORD=""
           KEY_PASSWORD=""
 
-          # Try both existing password secrets as store passwords. This handles
-          # the common case where the two GitHub password fields were accidentally swapped.
           for candidate_store in "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD"; do
             if keytool -list -keystore convogram-source.keystore -storetype PKCS12 -storepass "$candidate_store" >/dev/null 2>&1; then
               STORE_TYPE="PKCS12"
@@ -85,43 +92,29 @@ jobs:
             exit 1
           fi
 
-          echo "Detected keystore format: $STORE_TYPE"
           keytool -list -keystore convogram-source.keystore -storetype "$STORE_TYPE" \
             -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
 
-          # Try both configured password secrets as the private-key password.
           for candidate_key in "$ANDROID_KEY_PASSWORD" "$ANDROID_KEYSTORE_PASSWORD"; do
             if [ "$STORE_TYPE" = "PKCS12" ]; then
               if keytool -importkeystore -noprompt \
-                -srckeystore convogram-source.keystore \
-                -srcstoretype PKCS12 \
-                -srcstorepass "$STORE_PASSWORD" \
-                -srcalias "$ANDROID_KEY_ALIAS" \
-                -srckeypass "$candidate_key" \
-                -destkeystore convogram-release.jks \
-                -deststoretype JKS \
-                -deststorepass "$STORE_PASSWORD" \
-                -destalias "$ANDROID_KEY_ALIAS" \
-                -destkeypass "$candidate_key" >/dev/null 2>&1; then
+                -srckeystore convogram-source.keystore -srcstoretype PKCS12 \
+                -srcstorepass "$STORE_PASSWORD" -srcalias "$ANDROID_KEY_ALIAS" \
+                -srckeypass "$candidate_key" -destkeystore convogram-release.jks \
+                -deststoretype JKS -deststorepass "$STORE_PASSWORD" \
+                -destalias "$ANDROID_KEY_ALIAS" -destkeypass "$candidate_key" >/dev/null 2>&1; then
                 KEY_PASSWORD="$candidate_key"
                 break
               fi
               rm -f convogram-release.jks
             else
-              # For a JKS source, validate the key password by exporting the key entry
-              # to a temporary PKCS12 container using the candidate password.
               rm -f key-test.p12 convogram-release.jks
               if keytool -importkeystore -noprompt \
-                -srckeystore convogram-source.keystore \
-                -srcstoretype JKS \
-                -srcstorepass "$STORE_PASSWORD" \
-                -srcalias "$ANDROID_KEY_ALIAS" \
-                -srckeypass "$candidate_key" \
-                -destkeystore key-test.p12 \
-                -deststoretype PKCS12 \
-                -deststorepass "$STORE_PASSWORD" \
-                -destalias "$ANDROID_KEY_ALIAS" \
-                -destkeypass "$candidate_key" >/dev/null 2>&1; then
+                -srckeystore convogram-source.keystore -srcstoretype JKS \
+                -srcstorepass "$STORE_PASSWORD" -srcalias "$ANDROID_KEY_ALIAS" \
+                -srckeypass "$candidate_key" -destkeystore key-test.p12 \
+                -deststoretype PKCS12 -deststorepass "$STORE_PASSWORD" \
+                -destalias "$ANDROID_KEY_ALIAS" -destkeypass "$candidate_key" >/dev/null 2>&1; then
                 cp convogram-source.keystore convogram-release.jks
                 KEY_PASSWORD="$candidate_key"
                 rm -f key-test.p12
@@ -160,7 +153,6 @@ jobs:
             echo '}'
           } >> app/build.gradle
 
-          # Export only to this job environment; values remain masked by GitHub.
           echo "CONVOGRAM_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "CONVOGRAM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "CONVOGRAM_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
