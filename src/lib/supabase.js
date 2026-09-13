@@ -21,3 +21,49 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     detectSessionInUrl: true,
   },
 });
+
+// Safety override for the mobile chat view. The previous full-viewport fixed
+// layer could cover the application with a black surface while a conversation
+// was still loading. Keep the chat inside the app content so loading/errors
+// remain visible and the rest of Convogram cannot be accidentally obscured.
+if (typeof document !== "undefined" && !document.getElementById("convogram-chat-layout-fix")) {
+  const style = document.createElement("style");
+  style.id = "convogram-chat-layout-fix";
+  style.textContent = `
+    .messages-panel.chat-open {
+      position: relative !important;
+      inset: auto !important;
+      width: 100% !important;
+      height: min(720px, calc(100vh - 132px)) !important;
+      min-height: 0 !important;
+      z-index: 1 !important;
+      display: grid !important;
+      background: #080808 !important;
+      border-radius: 16px !important;
+    }
+    .messages-panel.chat-open .chat-window {
+      width: 100% !important;
+      height: 100% !important;
+      min-height: 0 !important;
+      display: flex !important;
+    }
+    .messages-panel.chat-open .chat-loading {
+      flex: 1 !important;
+      min-height: 220px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      color: #aaa !important;
+      font-size: 13px !important;
+      background: #080808 !important;
+    }
+    @media (max-width: 760px) {
+      .messages-panel.chat-open {
+        height: calc(100vh - 90px) !important;
+        min-height: 0 !important;
+        border-radius: 10px !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
