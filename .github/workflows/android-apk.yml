@@ -22,6 +22,12 @@ jobs:
         run: npm install
       - name: Harden login and account startup
         run: node scripts/harden-login.mjs
+      - name: Verify login hardening was applied
+        run: |
+          set -e
+          grep -q 'setTimeout(() => {' src/main.jsx
+          grep -q 'Could not start Convogram' src/main.jsx
+          grep -q 'Unable to sign in right now' src/main.jsx
       - name: Build web app
         run: npm run build
       - name: Setup Java 21
