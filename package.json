@@ -16,7 +16,6 @@
     "@capacitor/haptics": "latest",
     "@capacitor/push-notifications": "latest",
     "@capacitor/status-bar": "latest",
-    "@capacitor/splash-screen": "latest",
     "@capacitor-community/media": "^9.1.0",
     "@supabase/supabase-js": "latest",
     "emoji-picker-react": "latest",
