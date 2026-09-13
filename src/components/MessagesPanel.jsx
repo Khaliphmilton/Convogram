@@ -7,62 +7,250 @@ import { VerifiedBadge } from "./VerifiedBadge";
 import "./MessagesPanel.css";
 
 const REACTIONS = ["❤️", "😂", "👍", "🔥", "😮", "😢"];
-const LONG_PRESS_MS = 550;
 
-function VoiceNote({ src }) {
-  const audioRef = useRef(null); const [playing, setPlaying] = useState(false); const [duration, setDuration] = useState(0); const [current, setCurrent] = useState(0);
-  useEffect(() => { const audio = audioRef.current; if (!audio) return undefined; const onLoaded = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0); const onTime = () => setCurrent(audio.currentTime || 0); const onEnded = () => { setPlaying(false); setCurrent(0); }; audio.addEventListener("loadedmetadata", onLoaded); audio.addEventListener("timeupdate", onTime); audio.addEventListener("ended", onEnded); return () => { audio.removeEventListener("loadedmetadata", onLoaded); audio.removeEventListener("timeupdate", onTime); audio.removeEventListener("ended", onEnded); }; }, []);
-  useEffect(() => { if (audioRef.current) audioRef.current.load(); }, [src]);
-  async function togglePlayback() { const audio = audioRef.current; if (!audio) return; if (audio.paused) { try { await audio.play(); setPlaying(true); } catch (_) {} } else { audio.pause(); setPlaying(false); } }
-  function seek(e) { const audio = audioRef.current; if (!audio || !duration) return; const rect = e.currentTarget.getBoundingClientRect(); const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)); audio.currentTime = ratio * duration; setCurrent(audio.currentTime); }
-  function formatTime(value) { if (!Number.isFinite(value) || value < 0) return "0:00"; const seconds = Math.floor(value); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; }
-  const progress = duration ? Math.min(100, Math.max(0, (current / duration) * 100)) : 0; const bars = [4,7,10,6,12,8,15,9,13,6,11,16,8,13,7,12,9,15,6,11,8,14,10,7,12,5,9,13,7,11];
-  return <div className="voice-note" onClick={e => e.stopPropagation()}><audio ref={audioRef} src={src} preload="metadata" /><button type="button" className="voice-note-play" onClick={togglePlayback} aria-label={playing ? "Pause voice note" : "Play voice note"}>{playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</button><div className="voice-note-main"><button type="button" className="voice-note-track" onClick={seek} aria-label="Voice note progress"><span className="voice-note-wave" aria-hidden="true">{bars.map((height, index) => <i key={index} style={{ height: `${height}px` }} />)}</span><span className="voice-note-progress" style={{ width: `${progress}%` }} /></button><div className="voice-note-meta"><span>{playing ? formatTime(current) : formatTime(duration)}</span></div></div></div>;
+function conversationTitle(c, userId) {
+  if (!c) return "Conversation";
+  if (c.type === "group") return c.name || "Group conversation";
+  const member = c.conversation_members?.find(m => m.user_id !== userId);
+  return member?.profiles?.display_name || member?.profiles?.username || c._direct_profile?.display_name || c._direct_profile?.username || c.name || "Direct conversation";
 }
 
-function ConversationAvatar({ conversation, size = 38 }) { const profile = conversation?.type === "direct" ? conversation?._direct_profile : null; return <div className="conversation-avatar" style={{ position: "relative", overflow: "visible", width: size, height: size, flex: `0 0 ${size}px` }}>{profile?.avatar_url ? <img src={profile.avatar_url} alt="" style={{ width: "100%", height: "100%", display: "block", borderRadius: "50%", objectFit: "cover" }} /> : conversation?.type === "group" ? <Users size={18} /> : <MessageCircle size={18} />}</div>; }
-function NameWithVerification({ conversation, userId, className = "" }) { const name = conversationTitleValue(conversation, userId); const profile = conversation?.type === "direct" ? conversation?._direct_profile : null; return <strong className={className}>{name}{profile?.is_verified && <VerifiedBadge verified size={15} />}</strong>; }
-function UnreadBadge({ count }) { if (!(Number(count) > 0)) return null; return <span className="conversation-unread-badge" aria-label={`${count} unread message${count === 1 ? "" : "s"}`}>{count > 99 ? "99+" : count}</span>; }
-function conversationTitleValue(c, userId) { if (c?.type === "group") return c?.name || "Group conversation"; const member = c?.conversation_members?.find(item => item.user_id !== userId); return member?.profiles?.display_name || member?.profiles?.username || c?._direct_profile?.display_name || c?._direct_profile?.username || c?.name || "Direct conversation"; }
+function ConversationAvatar({ conversation, size = 38 }) {
+  const profile = conversation?.type === "direct" ? conversation?._direct_profile : null;
+  return <div className="conversation-avatar" style={{ width: size, height: size, flex: `0 0 ${size}px` }}>
+    {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : conversation?.type === "group" ? <Users size={18} /> : <MessageCircle size={18} />}
+  </div>;
+}
+
+function VoiceNote({ src }) {
+  const ref = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [current, setCurrent] = useState(0);
+  useEffect(() => {
+    const a = ref.current;
+    if (!a) return;
+    const loaded = () => setDuration(Number.isFinite(a.duration) ? a.duration : 0);
+    const time = () => setCurrent(a.currentTime || 0);
+    const ended = () => { setPlaying(false); setCurrent(0); };
+    a.addEventListener("loadedmetadata", loaded); a.addEventListener("timeupdate", time); a.addEventListener("ended", ended);
+    return () => { a.removeEventListener("loadedmetadata", loaded); a.removeEventListener("timeupdate", time); a.removeEventListener("ended", ended); };
+  }, [src]);
+  const toggle = async () => {
+    const a = ref.current;
+    if (!a) return;
+    try { if (a.paused) { await a.play(); setPlaying(true); } else { a.pause(); setPlaying(false); } } catch (_) {}
+  };
+  const format = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, "0")}`;
+  const pct = duration ? Math.min(100, Math.max(0, current / duration * 100)) : 0;
+  return <div className="voice-note" onClick={e => e.stopPropagation()}>
+    <audio ref={ref} src={src} preload="metadata" />
+    <button type="button" className="voice-note-play" onClick={toggle}>{playing ? <Pause size={15} /> : <Play size={15} />}</button>
+    <div className="voice-note-main"><div className="voice-note-track"><span className="voice-note-progress" style={{ width: `${pct}%` }} /></div><span className="voice-note-time">{format(playing ? current : duration)}</span></div>
+  </div>;
+}
 
 export function MessagesPanel({ userId, initialConversationId = null, onBack }) {
-  const [conversations, setConversations] = useState([]); const [selectedId, setSelectedId] = useState(null); const [details, setDetails] = useState(null); const [messages, setMessages] = useState([]); const [draft, setDraft] = useState(""); const [search, setSearch] = useState(""); const [loading, setLoading] = useState(true); const [sending, setSending] = useState(false); const [uploading, setUploading] = useState(false); const [recording, setRecording] = useState(false); const [error, setError] = useState(""); const [typingUsers, setTypingUsers] = useState([]); const [replyingTo, setReplyingTo] = useState(null); const [newChatOpen, setNewChatOpen] = useState(false); const [newMemberId, setNewMemberId] = useState(""); const [reactionMessageId, setReactionMessageId] = useState(null); const [remoteOnline, setRemoteOnline] = useState(false); const [lastOutgoingRead, setLastOutgoingRead] = useState(false);
-  const fileRef = useRef(null); const recorderRef = useRef(null); const chunksRef = useRef([]); const typingTimerRef = useRef(null); const presenceChannelRef = useRef(null); const globalPresenceChannelRef = useRef(null); const longPressTimerRef = useRef(null); const messageStreamRef = useRef(null); const chatHistoryRef = useRef(false);
-  async function enrichConversations(data) { const clean = (data || []).filter(Boolean); if (!clean.length || !supabase) return clean; const latest = await Promise.all(clean.map(async conversation => { try { const { data: message } = await supabase.from("messages").select("content, message_type, created_at, is_deleted").eq("conversation_id", conversation.id).order("created_at", { ascending: false }).limit(1).maybeSingle(); return [conversation.id, message || null]; } catch (_) { return [conversation.id, null]; } })); const latestById = new Map(latest); return clean.map(conversation => ({ ...conversation, _latest_message: latestById.get(conversation.id) || null })); }
-  async function loadConversations() { try { setLoading(true); setError(""); const data = await getConversations(userId); const clean = await enrichConversations(data); setConversations(clean); const pendingId = initialConversationId || consumePendingDirectConversationId(); if (pendingId) setSelectedId(pendingId); } catch (err) { setError(err.message || "Unable to load conversations."); } finally { setLoading(false); } }
-  async function refreshConversations() { if (!userId) return; try { const data = await getConversations(userId); setConversations(await enrichConversations(data)); } catch (_) {} }
-  async function loadConversation(id) { if (!id) return; setDetails(null); setMessages([]); setRemoteOnline(false); setLastOutgoingRead(false); setError(""); try { const [conversation, conversationMessages] = await Promise.all([getConversationDetails(id), getMessages(id, 100)]); if (!conversation) throw new Error("Conversation could not be found."); const remoteMember = conversation?.conversation_members?.find(member => member.user_id !== userId); if (remoteMember?.user_id) { const { data: remoteProfile } = await supabase.from("profiles").select("id, username, display_name, avatar_url, is_verified").eq("id", remoteMember.user_id).maybeSingle(); if (remoteProfile) conversation.conversation_members = conversation.conversation_members.map(member => member.user_id === remoteMember.user_id ? { ...member, profiles: remoteProfile } : member); } const orderedMessages = [...(conversationMessages || [])].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()); setDetails(conversation); setMessages(orderedMessages); for (const message of orderedMessages) if (message.sender_id !== userId && !message.is_deleted) markMessageAsRead(message.id, userId).catch(() => {}); } catch (err) { setError(err.message || "Unable to open conversation."); setSelectedId(null); } }
-  useEffect(() => { if (userId) loadConversations(); }, [userId, initialConversationId]);
-  useEffect(() => { if (!userId) return undefined; const timer = setInterval(refreshConversations, 2500); return () => clearInterval(timer); }, [userId]);
-  useEffect(() => { if (!selectedId) { setDetails(null); setMessages([]); setReactionMessageId(null); setRemoteOnline(false); setLastOutgoingRead(false); return; } loadConversation(selectedId); }, [selectedId]);
-  useEffect(() => { if (!selectedId) return undefined; if (!chatHistoryRef.current) { window.history.pushState({ convogram: true, page: "messages", chat: selectedId }, "", window.location.href); chatHistoryRef.current = true; } const handlePhoneBack = () => { if (!chatHistoryRef.current) return false; chatHistoryRef.current = false; setReactionMessageId(null); setReplyingTo(null); setDetails(null); setMessages([]); setSelectedId(null); return true; }; window.__convogramChatBack = handlePhoneBack; return () => { if (window.__convogramChatBack === handlePhoneBack) delete window.__convogramChatBack; }; }, [selectedId]);
-  useEffect(() => { if (!selectedId) return; return subscribeToConversation(selectedId, incoming => { setMessages(current => current.some(i => i.id === incoming.id) ? current : [...current, incoming].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())); setConversations(current => current.map(c => c.id === selectedId ? { ...c, last_message_at: incoming.created_at, updated_at: incoming.created_at, _latest_message: incoming, unread_count: 0 } : c)); if (incoming.sender_id !== userId) markMessageAsRead(incoming.id, userId).catch(() => {}); }, updated => setMessages(current => current.map(i => i.id === updated.id ? { ...i, ...updated } : i))); }, [selectedId, userId]);
-  useEffect(() => { const el = messageStreamRef.current; if (!el || !selectedId || !details) return; const frame = requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "auto" })); return () => cancelAnimationFrame(frame); }, [selectedId, details]);
-  useEffect(() => { const el = messageStreamRef.current; if (!el || !selectedId || !messages.length) return; const frame = requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })); return () => cancelAnimationFrame(frame); }, [messages.length, selectedId]);
-  useEffect(() => { if (!selectedId || !userId || !supabase) return; const channel = supabase.channel(`convogram-presence-${selectedId}`, { config: { presence: { key: userId } } }); presenceChannelRef.current = channel; const updatePresence = () => { const state = channel.presenceState(); const users = Object.values(state).flat(); setRemoteOnline(users.some(item => item.userId && item.userId !== userId && item.online !== false)); setTypingUsers(users.filter(item => item.userId !== userId && item.typing)); }; channel.on("presence", { event: "sync" }, updatePresence).on("presence", { event: "join" }, updatePresence).on("presence", { event: "leave" }, updatePresence).subscribe(async status => { if (status === "SUBSCRIBED") { await channel.track({ userId, typing: false, online: true }); updatePresence(); } }); return () => { channel.untrack().catch(() => {}); supabase.removeChannel(channel); presenceChannelRef.current = null; setRemoteOnline(false); setTypingUsers([]); }; }, [selectedId, userId]);
-  useEffect(() => { if (!userId || !supabase) return undefined; const channel = supabase.channel("convogram-online", { config: { presence: { key: userId } } }); globalPresenceChannelRef.current = channel; channel.subscribe(async status => { if (status === "SUBSCRIBED") await channel.track({ userId, online: true }); }); return () => { channel.untrack().catch(() => {}); supabase.removeChannel(channel); globalPresenceChannelRef.current = null; }; }, [userId]);
-  const remoteUserId = details?.conversation_members?.find(member => member.user_id !== userId)?.user_id || null;
-  const refreshReadStatus = async () => { if (!selectedId || !userId || !remoteUserId || !supabase) return; try { const latest = [...messages].reverse().find(message => message.sender_id === userId && !message.is_deleted); if (!latest) { setLastOutgoingRead(false); return; } const { data } = await supabase.from("read_receipts").select("id").eq("message_id", latest.id).eq("user_id", remoteUserId).maybeSingle(); setLastOutgoingRead(Boolean(data)); } catch (_) {} };
-  useEffect(() => { if (!selectedId || !messages.length) return; refreshReadStatus(); const timer = setInterval(refreshReadStatus, 2000); return () => clearInterval(timer); }, [selectedId, messages, remoteUserId]);
-  useEffect(() => () => clearTimeout(longPressTimerRef.current), []);
-  const filtered = useMemo(() => { const term = search.trim().toLowerCase(); if (!term) return conversations; return conversations.filter(c => `${c.name || ""} ${c.type || ""} ${c._direct_profile?.display_name || ""} ${c._direct_profile?.username || ""}`.toLowerCase().includes(term)); }, [conversations, search]);
-  const sortedConversations = useMemo(() => [...filtered].sort((a, b) => { const at = new Date(a?._latest_message?.created_at || a?.last_message_at || a?.updated_at || a?.created_at || 0).getTime() || 0; const bt = new Date(b?._latest_message?.created_at || b?.last_message_at || b?.updated_at || b?.created_at || 0).getTime() || 0; return bt - at; }), [filtered]);
-  function conversationTitle(c) { return conversationTitleValue(c, userId); }
-  function latestPreview(c) { const latest = c?._latest_message; if (!latest) return c?.type === "group" ? "Group" : "Private chat"; if (latest.is_deleted) return "Message deleted"; if (latest.message_type === "image") return "Photo"; if (latest.message_type === "video") return "Video"; if (latest.message_type === "audio") return "Voice message"; return latest.content || "Attachment"; }
-  function senderName(reply) { return reply?.profiles?.display_name || reply?.profiles?.username || (reply?.sender_id === userId ? "You" : "Message"); }
-  function replyText(reply) { if (!reply) return ""; if (reply.is_deleted) return "Message deleted"; if (reply.message_type === "image") return "Photo"; if (reply.message_type === "video") return "Video"; if (reply.message_type === "audio") return "Voice message"; return reply.content || "Attachment"; }
-  const remoteProfile = details?.conversation_members?.find(member => member.user_id !== userId)?.profiles || null;
-  async function updateTyping(value) { const channel = presenceChannelRef.current; if (channel) await channel.track({ userId, typing: value, online: true }).catch(() => {}); }
-  function handleDraftChange(e) { setDraft(e.target.value); updateTyping(true); clearTimeout(typingTimerRef.current); typingTimerRef.current = setTimeout(() => updateTyping(false), 1200); }
-  function selectConversation(id) { setReactionMessageId(null); setError(""); setSelectedId(id); }
-  function backToChats() { setReactionMessageId(null); setReplyingTo(null); setDetails(null); setMessages([]); if (chatHistoryRef.current) { window.history.back(); return; } setSelectedId(null); }
-  const latestOutgoing = [...messages].reverse().find(message => message.sender_id === userId && !message.is_deleted);
-  const messageStatus = !latestOutgoing ? "" : lastOutgoingRead ? "Read" : remoteOnline ? "Delivered" : "Offline";
-  const statusClass = lastOutgoingRead ? "read" : remoteOnline ? "online" : "offline";
+  const [conversations, setConversations] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [error, setError] = useState("");
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [reactionMessageId, setReactionMessageId] = useState(null);
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newMemberId, setNewMemberId] = useState("");
+  const [remoteOnline, setRemoteOnline] = useState(false);
+  const fileRef = useRef(null);
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const messageStreamRef = useRef(null);
+  const presenceRef = useRef(null);
+
+  const loadConversations = async () => {
+    if (!userId) return;
+    try {
+      setLoading(true); setError("");
+      const data = await getConversations(userId);
+      const enriched = await Promise.all((data || []).map(async c => {
+        let latest = null;
+        try { const { data: row } = await supabase.from("messages").select("content,message_type,created_at,is_deleted").eq("conversation_id", c.id).order("created_at", { ascending: false }).limit(1).maybeSingle(); latest = row || null; } catch (_) {}
+        return { ...c, _latest_message: latest };
+      }));
+      setConversations(enriched);
+      const pending = initialConversationId || consumePendingDirectConversationId();
+      if (pending) setSelectedId(pending);
+    } catch (e) { setError(e?.message || "Unable to load conversations."); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadConversations(); }, [userId, initialConversationId]);
+  useEffect(() => { if (!userId) return; const t = setInterval(() => loadConversations().catch(() => {}), 5000); return () => clearInterval(t); }, [userId]);
+
+  useEffect(() => {
+    if (!selectedId) { setDetails(null); setMessages([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        setChatLoading(true); setError("");
+        const conversation = await getConversationDetails(selectedId);
+        if (!conversation) throw new Error("Conversation could not be found.");
+        if (cancelled) return;
+        setDetails(conversation);
+        try {
+          const data = await getMessages(selectedId, 100, userId);
+          if (!cancelled) setMessages(Array.isArray(data) ? data : []);
+        } catch (e) {
+          if (!cancelled) setError(e?.message || "Messages could not be loaded.");
+        }
+      } catch (e) {
+        if (!cancelled) { setError(e?.message || "Unable to open conversation."); setSelectedId(null); }
+      } finally { if (!cancelled) setChatLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedId, userId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    return subscribeToConversation(selectedId, incoming => {
+      setMessages(prev => prev.some(m => m.id === incoming.id) ? prev : [...prev, incoming].sort((a,b) => new Date(a.created_at) - new Date(b.created_at)));
+      setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, _latest_message: incoming, updated_at: incoming.created_at, last_message_at: incoming.created_at, unread_count: 0 } : c));
+      if (incoming.sender_id !== userId) markMessageAsRead(incoming.id, userId).catch(() => {});
+    }, updated => setMessages(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m)));
+  }, [selectedId, userId]);
+
+  useEffect(() => {
+    if (!messageStreamRef.current || !selectedId) return;
+    requestAnimationFrame(() => { const el = messageStreamRef.current; if (el) el.scrollTop = el.scrollHeight; });
+  }, [messages.length, selectedId, chatLoading]);
+
+  useEffect(() => {
+    if (!selectedId || !userId) return;
+    const channel = supabase.channel(`convogram-presence-${selectedId}`, { config: { presence: { key: userId } } });
+    presenceRef.current = channel;
+    const sync = () => { const users = Object.values(channel.presenceState()).flat(); setRemoteOnline(users.some(u => u.userId && u.userId !== userId && u.online !== false)); };
+    channel.on("presence", { event: "sync" }, sync).on("presence", { event: "join" }, sync).on("presence", { event: "leave" }, sync).subscribe(async status => { if (status === "SUBSCRIBED") { await channel.track({ userId, online: true }); sync(); } });
+    return () => { channel.untrack().catch(() => {}); supabase.removeChannel(channel); presenceRef.current = null; setRemoteOnline(false); };
+  }, [selectedId, userId]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter(c => `${conversationTitle(c, userId)} ${c.type || ""}`.toLowerCase().includes(q));
+  }, [conversations, search, userId]);
+  const sorted = useMemo(() => [...filtered].sort((a,b) => new Date(b?._latest_message?.created_at || b?.updated_at || 0) - new Date(a?._latest_message?.created_at || a?.updated_at || 0)), [filtered]);
+
+  const displayPreview = c => {
+    const m = c?._latest_message;
+    if (!m) return c.type === "group" ? "Group" : "Private chat";
+    if (m.is_deleted) return "Message deleted";
+    if (m.message_type === "image") return "Photo";
+    if (m.message_type === "video") return "Video";
+    if (m.message_type === "audio") return "Voice message";
+    return m.content || "Attachment";
+  };
+
+  const handleSend = async e => {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text || !selectedId || !userId || sending) return;
+    try { setSending(true); const sent = await sendMessage(selectedId, userId, text, "text", null, replyingTo?.id || null); setMessages(prev => prev.some(m => m.id === sent.id) ? prev : [...prev, sent]); setDraft(""); setReplyingTo(null); } catch (e) { setError(e?.message || "Could not send message."); } finally { setSending(false); }
+  };
+
+  const handleMedia = async e => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedId || !userId) return;
+    try { setUploading(true); const uploaded = await uploadMessageMedia(file, userId); const sent = await sendMessage(selectedId, userId, null, uploaded.mediaType, uploaded.url, replyingTo?.id || null); setMessages(prev => [...prev, sent]); setReplyingTo(null); } catch (e) { setError(e?.message || "Could not upload media."); } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
+  };
+
+  const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) { setError("Microphone is not available on this device."); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = e => { if (e.data?.size) chunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        try { const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }); const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type || "audio/webm" }); const uploaded = await uploadVoiceMessage(file, userId); const sent = await sendMessage(selectedId, userId, null, "audio", uploaded.url, replyingTo?.id || null); setMessages(prev => [...prev, sent]); } catch (e) { setError(e?.message || "Could not send voice note."); } finally { stream.getTracks().forEach(t => t.stop()); setRecording(false); }
+      };
+      recorderRef.current = recorder; recorder.start(); setRecording(true);
+    } catch (e) { setError(e?.message || "Microphone permission is required."); }
+  };
+  const stopRecording = () => { if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop(); else setRecording(false); };
+
+  const toggleReaction = async (message, reaction) => {
+    if (!userId) return;
+    const mine = (message.message_reactions || []).find(r => r.user_id === userId && r.reaction === reaction);
+    try {
+      if (mine) await removeMessageReaction(message.id, userId, reaction); else await addMessageReaction(message.id, userId, reaction);
+      const data = await getMessages(selectedId, 100, userId); setMessages(data || []);
+    } catch (e) { setError(e?.message || "Could not update reaction."); }
+    finally { setReactionMessageId(null); }
+  };
+  const handleDelete = async message => {
+    try { const updated = await deleteMessage(message.id); setMessages(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m)); } catch (e) { setError(e?.message || "Could not delete message."); }
+    finally { setReactionMessageId(null); }
+  };
+  const handleCreateChat = async e => {
+    e.preventDefault();
+    const memberId = newMemberId.trim();
+    if (!memberId) return;
+    try { const conversation = await createConversation(userId, "direct", null, null, [memberId]); setNewChatOpen(false); setNewMemberId(""); setSelectedId(conversation.id); await loadConversations(); } catch (e) { setError(e?.message || "Could not create chat."); }
+  };
+  const backToChats = () => { setSelectedId(null); setDetails(null); setMessages([]); setReplyingTo(null); setReactionMessageId(null); if (onBack) onBack(); };
+
+  const remoteProfile = details?.conversation_members?.find(m => m.user_id !== userId)?.profiles || null;
+  const titleConversation = details ? { ...details, _direct_profile: remoteProfile } : null;
+
   return <div className={`messages-panel ${selectedId ? "chat-open" : ""}`}>
-    {error && <div className="messages-error">{error}<button onClick={() => setError("")}><X size={15} /></button></div>}
-    {!selectedId && <aside className="conversation-list"><div className="messages-list-head"><div><h2>Messages</h2></div><button className="messages-icon-button" onClick={() => setNewChatOpen(true)} title="New chat"><Plus size={19} /></button></div><div className="messages-search"><Search size={16} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search chats" /></div>{loading ? <div className="messages-empty">Loading chats...</div> : sortedConversations.length ? sortedConversations.map(c => <button key={c.id} className="conversation-item" onClick={() => selectConversation(c.id)}><ConversationAvatar conversation={c} /><div className="conversation-copy"><NameWithVerification conversation={c} userId={userId} /><span>{latestPreview(c)}</span></div><UnreadBadge count={c.unread_count} /></button>) : <div className="messages-empty"><MessageCircle size={28} /><p>No chats yet.</p><button className="secondary-button" onClick={() => setNewChatOpen(true)}>Start a chat</button></div>}</aside>}
-    {selectedId && <section className="chat-window">{details ? <><header className="chat-head"><button type="button" className="chat-back-button" onClick={backToChats} aria-label="Back to chats"><ChevronLeft size={20} /></button><ConversationAvatar conversation={{ ...details, _direct_profile: remoteProfile }} size={38} /><div className="chat-head-copy"><NameWithVerification conversation={{ ...details, _direct_profile: remoteProfile }} userId={userId} /><span className={`chat-presence-status ${remoteOnline ? "online" : "offline"}`}><i />{typingUsers.length ? "Typing…" : remoteOnline ? (lastOutgoingRead ? "Online · Read" : "Online · Not read") : "Offline"}</span></div><div className="chat-call-actions"><button type="button" className="messages-icon-button" onClick={() => window.dispatchEvent(new CustomEvent("convogram-start-call", { detail: { type: "voice" } }))} disabled={!remoteUserId} title="Voice call"><Phone size={17} /></button><button type="button" className="messages-icon-button" onClick={() => window.dispatchEvent(new CustomEvent("convogram-start-call", { detail: { type: "video" } }))} disabled={!remoteUserId} title="Video call"><Video size={17} /></button></div></header><div ref={messageStreamRef} className="message-stream" onClick={() => reactionMessageId && setReactionMessageId(null)}>{messages.length ? messages.map(item => { const mine = item.sender_id === userId; const media = ["image", "video", "audio"].includes(item.message_type); const reactions = item.message_reactions || []; const reactionsOpen = reactionMessageId === item.id; const quoted = item.reply_to; const isLatestOutgoing = mine && item.id === latestOutgoing?.id; return <div key={item.id} className={`message-row ${mine ? "mine" : "theirs"}`}><div className={`message-bubble ${reactionsOpen ? "reaction-active" : ""}`} onPointerDown={() => startLongPress(item.id)} onPointerUp={cancelLongPress} onPointerCancel={cancelLongPress} onPointerLeave={cancelLongPress} onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }} onClick={e => e.stopPropagation()}>{quoted && <div className="message-reply-preview"><div className="reply-preview-label"><Reply size={11} /> Replying to {senderName(quoted)}</div><div className="reply-preview-text">{replyText(quoted)}</div></div>}{item.is_deleted ? <em>Message deleted</em> : media && item.media_url ? (item.message_type === "image" ? <img src={item.media_url} alt="Shared media" className="message-media" /> : item.message_type === "video" ? <video src={item.media_url} className="message-media" controls preload="metadata" /> : <VoiceNote src={item.media_url} />) : <span className="message-text">{item.content || "Attachment"}</span>}{reactionsOpen && !item.is_deleted && <div className="message-actions" onClick={e => e.stopPropagation()}><div className="reaction-picker" aria-label="Message reactions">{REACTIONS.map(r => <button key={r} type="button" aria-label={`React ${r}`} onClick={() => toggleReaction(item, r)}>{r}</button>)}</div><div className="message-tools"><button type="button" onClick={() => { setReplyingTo(item); setReactionMessageId(null); }} title="Reply"><Reply size={13} /></button>{mine && <button type="button" onClick={() => handleDelete(item)} title="Delete"><Trash2 size={13} /></button>}</div></div>}{reactions.length > 0 && <div className="message-reactions">{[...new Set(reactions.map(r => r.reaction))].map(r => <button key={r} type="button" onClick={() => toggleReaction(item, r)}>{r} {reactions.filter(x => x.reaction === r).length}</button>)}</div>}<small>{new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{mine && <Check size={12} />}{isLatestOutgoing && <span className={`message-status ${statusClass}`}>{messageStatus}</span>}</small></div></div>; }) : <div className="chat-empty"><MessageCircle size={42} /><h2>Messages</h2><p>Send a message to begin.</p></div>}</div>{replyingTo && <div className="reply-banner"><div className="reply-banner-copy"><strong>Replying to {senderName(replyingTo)}</strong><span>{replyText(replyingTo)}</span></div><button type="button" onClick={() => setReplyingTo(null)} aria-label="Cancel reply"><X size={14} /></button></div>}<form className="message-composer" onSubmit={handleSend}><input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={handleMedia} /><button type="button" className="messages-icon-button" onClick={() => fileRef.current?.click()} disabled={uploading || recording}><ImagePlus size={19} /></button>{recording ? <button type="button" className="messages-icon-button recording" onClick={stopRecording}><Square size={17} /></button> : <button type="button" className="messages-icon-button" onClick={startRecording} disabled={uploading}><Mic size={19} /></button>}<button type="button" className="messages-icon-button" title="Emoji"><Smile size={19} /></button><input value={draft} onChange={handleDraftChange} placeholder={recording ? "Recording voice note…" : uploading ? "Uploading…" : "Write a message..."} disabled={uploading || recording} /><button className="send-button" disabled={!draft.trim() || sending || uploading || recording} type="submit"><Send size={18} /></button></form></> : <div className="chat-loading">Opening messages…</div>}</section>}
+    {error && <div className="messages-error">{error}<button type="button" onClick={() => setError("")}><X size={15} /></button></div>}
+    {!selectedId && <aside className="conversation-list">
+      <div className="messages-list-head"><h2>Messages</h2><button type="button" className="messages-icon-button" onClick={() => setNewChatOpen(true)}><Plus size={19} /></button></div>
+      <div className="messages-search"><Search size={16} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search chats" /></div>
+      {loading ? <div className="messages-empty">Loading chats...</div> : sorted.length ? sorted.map(c => <button type="button" key={c.id} className="conversation-item" onClick={() => { setError(""); setSelectedId(c.id); }}><ConversationAvatar conversation={c} /><div className="conversation-copy"><strong>{conversationTitle(c, userId)}{c._direct_profile?.is_verified && <VerifiedBadge verified size={15} />}</strong><span>{displayPreview(c)}</span></div>{Number(c.unread_count) > 0 && <span className="conversation-unread-badge">{c.unread_count > 99 ? "99+" : c.unread_count}</span>}</button>) : <div className="messages-empty"><MessageCircle size={28} /><p>No chats yet.</p><button type="button" className="secondary-button" onClick={() => setNewChatOpen(true)}>Start a chat</button></div>}
+    </aside>}
+
+    {selectedId && <section className="chat-window">
+      {chatLoading && !details ? <div className="chat-loading">Opening messages…</div> : details ? <>
+        <header className="chat-head">
+          <button type="button" className="chat-back-button" onClick={backToChats}><ChevronLeft size={20} /></button>
+          <ConversationAvatar conversation={titleConversation} size={38} />
+          <div className="chat-head-copy"><strong>{conversationTitle(titleConversation, userId)}{remoteProfile?.is_verified && <VerifiedBadge verified size={15} />}</strong><span className={remoteOnline ? "chat-presence-status online" : "chat-presence-status offline"}><i />{remoteOnline ? "Online" : "Offline"}</span></div>
+          <div className="chat-call-actions"><button type="button" className="messages-icon-button" title="Voice call" onClick={() => window.dispatchEvent(new CustomEvent("convogram-start-call", { detail: { type: "voice", userId: remoteProfile?.id } }))}><Phone size={17} /></button><button type="button" className="messages-icon-button" title="Video call" onClick={() => window.dispatchEvent(new CustomEvent("convogram-start-call", { detail: { type: "video", userId: remoteProfile?.id } }))}><Video size={17} /></button></div>
+        </header>
+        <div ref={messageStreamRef} className="message-stream" onClick={() => setReactionMessageId(null)}>
+          {messages.length ? messages.map(item => {
+            const mine = item.sender_id === userId; const media = ["image", "video", "audio"].includes(item.message_type); const reactions = item.message_reactions || [];
+            return <div key={item.id} className={`message-row ${mine ? "mine" : "theirs"}`}><div className={`message-bubble ${reactionMessageId === item.id ? "reaction-active" : ""}`} onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }}>
+              {item.reply_to && <div className="message-reply-preview"><div className="reply-preview-label"><Reply size={11} /> Reply</div><div className="reply-preview-text">{item.reply_to.content || item.reply_to.message_type || "Attachment"}</div></div>}
+              {item.is_deleted ? <em>Message deleted</em> : media && item.media_url ? item.message_type === "image" ? <img src={item.media_url} alt="Shared media" className="message-media" /> : item.message_type === "video" ? <video src={item.media_url} className="message-media" controls preload="metadata" /> : <VoiceNote src={item.media_url} /> : <span className="message-text">{item.content || "Attachment"}</span>}
+              {reactionMessageId === item.id && !item.is_deleted && <div className="message-actions" onClick={e => e.stopPropagation()}><div className="reaction-picker">{REACTIONS.map(r => <button type="button" key={r} onClick={() => toggleReaction(item, r)}>{r}</button>)}</div><div className="message-tools"><button type="button" onClick={() => { setReplyingTo(item); setReactionMessageId(null); }}><Reply size={13} /></button>{mine && <button type="button" onClick={() => handleDelete(item)}><Trash2 size={13} /></button>}</div></div>}
+              {reactions.length > 0 && <div className="message-reactions">{[...new Set(reactions.map(r => r.reaction))].map(r => <button type="button" key={r} onClick={() => toggleReaction(item, r)}>{r} {reactions.filter(x => x.reaction === r).length}</button>)}</div>}
+              <small>{item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}{mine && <Check size={12} />}</small>
+            </div></div>;
+          }) : <div className="chat-empty"><MessageCircle size={42} /><h2>Messages</h2><p>Send a message to begin.</p></div>}
+        </div>
+        {replyingTo && <div className="reply-banner"><div className="reply-banner-copy"><strong>Replying</strong><span>{replyingTo.content || "Attachment"}</span></div><button type="button" onClick={() => setReplyingTo(null)}><X size={14} /></button></div>}
+        <form className="message-composer" onSubmit={handleSend}>
+          <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={handleMedia} />
+          <button type="button" className="messages-icon-button" onClick={() => fileRef.current?.click()} disabled={uploading || recording}><ImagePlus size={19} /></button>
+          {recording ? <button type="button" className="messages-icon-button recording" onClick={stopRecording}><Square size={17} /></button> : <button type="button" className="messages-icon-button" onClick={startRecording} disabled={uploading}><Mic size={19} /></button>}
+          <button type="button" className="messages-icon-button" title="Emoji"><Smile size={19} /></button>
+          <input value={draft} onChange={e => setDraft(e.target.value)} placeholder={recording ? "Recording voice note…" : uploading ? "Uploading…" : "Write a message..."} disabled={uploading || recording} />
+          <button className="send-button" disabled={!draft.trim() || sending || uploading || recording} type="submit"><Send size={18} /></button>
+        </form>
+      </> : <div className="chat-loading">Opening messages…</div>}
+    </section>}
+
     {newChatOpen && <div className="messages-modal-backdrop"><form className="messages-modal" onSubmit={handleCreateChat}><button type="button" className="messages-modal-close" onClick={() => setNewChatOpen(false)}><X /></button><span className="eyebrow">NEW CONVERSATION</span><h2>Start a chat</h2><p>Enter the Convogram user ID of the person you want to message.</p><input autoFocus value={newMemberId} onChange={e => setNewMemberId(e.target.value)} placeholder="User ID" /><button className="primary-button" type="submit">Create chat</button></form></div>}
   </div>;
 }
