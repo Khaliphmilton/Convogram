@@ -35,10 +35,20 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Capacitor Android
+      - name: Install Capacitor Android and create native project
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap add android
           npx cap sync android
+
+      - name: Add Android permissions
+        run: node scripts/add-android-permissions.mjs
+
+      - name: Install icon converter
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
+
+      - name: Generate Android icon resources
+        run: node scripts/generate-android-icon.mjs
 
       - name: Build release APK
         working-directory: android
