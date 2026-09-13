@@ -11,4 +11,13 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Keep the Supabase session persistent on this device so a user stays logged in
+// after closing/reopening Convogram. Supabase manages the session tokens in its
+// auth storage; Convogram never stores the user's password.
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
