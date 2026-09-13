@@ -64,7 +64,6 @@ function App() {
     setActiveState(next);
     window.history.pushState({ convogram: true, page: next }, "", window.location.href);
   }
-
   function goBack() {
     const previous = navigationStackRef.current.pop();
     if (!previous) return;
@@ -73,208 +72,103 @@ function App() {
     ignoreNextPopRef.current = true;
     window.history.back();
   }
-
   function openNotifications() {
     if (notificationsHistoryRef.current) return;
     notificationsHistoryRef.current = true;
     setNotifications(true);
     window.history.pushState({ convogram: true, overlay: "notifications" }, "", window.location.href);
   }
-
   function closeNotifications() {
-    if (!notificationsHistoryRef.current) {
-      setNotifications(false);
-      return;
-    }
+    if (!notificationsHistoryRef.current) { setNotifications(false); return; }
     window.history.back();
   }
-
   useEffect(() => {
     window.history.replaceState({ convogram: true, root: true }, "", window.location.href);
     window.history.pushState({ convogram: true, root: true }, "", window.location.href);
     const onPop = () => {
-      if (notificationsHistoryRef.current) {
-        notificationsHistoryRef.current = false;
-        setNotifications(false);
-        return;
-      }
-      if (ignoreNextPopRef.current) {
-        ignoreNextPopRef.current = false;
-        return;
-      }
+      if (notificationsHistoryRef.current) { notificationsHistoryRef.current = false; setNotifications(false); return; }
+      if (ignoreNextPopRef.current) { ignoreNextPopRef.current = false; return; }
       const previous = navigationStackRef.current.pop();
-      if (previous) {
-        activeRef.current = previous;
-        setActiveState(previous);
-      } else {
-        window.history.pushState({ convogram: true, root: true }, "", window.location.href);
-      }
+      if (previous) { activeRef.current = previous; setActiveState(previous); }
+      else window.history.pushState({ convogram: true, root: true }, "", window.location.href);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
-
   async function loadProfile(id) {
     if (!supabase || !id) return;
     const { data } = await supabase.from("profiles").select("*").eq("id", id).single();
     if (data) setProfile(data);
   }
-
   async function refresh() {
     if (!session?.user?.id || !supabase) return;
     setLoadingFeed(true);
     try {
-      const [feed, ms, ps, nu] = await Promise.all([
-        getFeed(40),
-        getMomentsForFeed(session.user.id, 30),
-        getProfileStats(session.user.id),
-        getUnreadNotificationsCount(session.user.id)
-      ]);
-      setPosts(feed || []);
-      setMoments(ms || []);
-      if (ps) setStats(ps);
-      setUnread(nu || 0);
-      const map = {};
-      await Promise.all((feed || []).map(async (p) => { map[p.id] = await isPostLikedByUser(p.id, session.user.id); }));
-      setLiked(map);
-    } catch (e) {
-      setError(e.message || "Could not load Convogram.");
-    } finally {
-      setLoadingFeed(false);
-    }
+      const [feed, ms, ps, nu] = await Promise.all([getFeed(40), getMomentsForFeed(session.user.id, 30), getProfileStats(session.user.id), getUnreadNotificationsCount(session.user.id)]);
+      setPosts(feed || []); setMoments(ms || []); if (ps) setStats(ps); setUnread(nu || 0);
+      const map = {}; await Promise.all((feed || []).map(async (p) => { map[p.id] = await isPostLikedByUser(p.id, session.user.id); })); setLiked(map);
+    } catch (e) { setError(e.message || "Could not load Convogram."); }
+    finally { setLoadingFeed(false); }
   }
-
   useEffect(() => {
-    let alive = true;
-    let subscription;
+    let alive = true; let subscription;
     async function boot() {
-      if (!supabase) {
-        setError("Supabase is not configured.");
-        setBooting(false);
-        return;
-      }
-      const { data } = await supabase.auth.getSession();
-      if (!alive) return;
-      setSession(data.session);
-      if (data.session) {
-        setEmail(data.session.user.email || "");
-        await loadProfile(data.session.user.id);
-      }
+      if (!supabase) { setError("Supabase is not configured."); setBooting(false); return; }
+      const { data } = await supabase.auth.getSession(); if (!alive) return; setSession(data.session);
+      if (data.session) { setEmail(data.session.user.email || ""); await loadProfile(data.session.user.id); }
       setBooting(false);
     }
     boot();
     if (supabase) {
-      const auth = supabase.auth.onAuthStateChange(async (_event, next) => {
-        setSession(next);
-        setEmail(next?.user?.email || "");
-        if (next) await loadProfile(next.user.id);
-        else { setProfile(null); setViewedProfile(null); }
-      });
+      const auth = supabase.auth.onAuthStateChange(async (_event, next) => { setSession(next); setEmail(next?.user?.email || ""); if (next) await loadProfile(next.user.id); else { setProfile(null); setViewedProfile(null); } });
       subscription = auth.data?.subscription;
     }
     return () => { alive = false; subscription?.unsubscribe(); };
   }, []);
-
   useEffect(() => { if (session?.user?.id) refresh(); }, [session?.user?.id]);
-  useEffect(() => {
-    if (active === "shorts" && session?.user?.id) {
-      getShortsForDiscover(30, 0).then((x) => setShorts(x || [])).catch((e) => setError(e.message || "Could not load Shorts."));
-    }
-  }, [active, session?.user?.id]);
-
+  useEffect(() => { if (active === "shorts" && session?.user?.id) getShortsForDiscover(30, 0).then((x) => setShorts(x || [])).catch((e) => setError(e.message || "Could not load Shorts.")); }, [active, session?.user?.id]);
   async function authenticate(e) {
-    e.preventDefault();
-    setError("");
-    setNotice("");
+    e.preventDefault(); setError(""); setNotice("");
     if (!email || !password) { setError("Enter your email and password."); return; }
-    if (authMode === "login") {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) setError(authError.message);
-      return;
-    }
+    if (authMode === "login") { const { error: authError } = await supabase.auth.signInWithPassword({ email, password }); if (authError) setError(authError.message); return; }
     if (!username.trim() || !displayName.trim()) { setError("Enter your name and username."); return; }
     const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { username: username.trim().toLowerCase(), display_name: displayName.trim() } } });
-    if (authError) setError(authError.message);
-    else if (!data.session) setNotice("Account created. Check your email to confirm your account.");
+    if (authError) setError(authError.message); else if (!data.session) setNotice("Account created. Check your email to confirm your account.");
   }
-
-  async function logout() {
-    if (supabase) await supabase.auth.signOut();
-    activeRef.current = "home";
-    setActiveState("home");
-    navigationStackRef.current = [];
-    setPosts([]); setMoments([]); setProfile(null); setViewedProfile(null);
-  }
-
+  async function logout() { if (supabase) await supabase.auth.signOut(); activeRef.current = "home"; setActiveState("home"); navigationStackRef.current = []; setPosts([]); setMoments([]); setProfile(null); setViewedProfile(null); }
   function openComposer(type) { setComposer(type); setCaption(""); setFile(null); }
   function closeComposer() { setComposer(null); setCaption(""); setFile(null); }
-
   async function publish() {
-    if (!session?.user?.id || (!caption.trim() && !file)) return;
-    setPublishing(true);
+    if (!session?.user?.id || (!caption.trim() && !file)) return; setPublishing(true);
     try {
-      if (composer === "post") {
-        let url = null; let type = "text";
-        if (file) { const uploaded = await uploadPostMedia(file, session.user.id); url = uploaded.url; type = uploaded.mediaType; }
-        const created = await createPost(session.user.id, caption.trim(), url, type);
-        setPosts((current) => [{ ...created, profiles: profile, likes: [{ count: 0 }], comments: [{ count: 0 }] }, ...current]);
-      } else {
-        if (!file) throw new Error("Choose a photo or video for a Moment.");
-        const uploaded = await uploadMomentMedia(file, session.user.id);
-        const created = await createMoment(session.user.id, uploaded.url, uploaded.mediaType, caption.trim());
-        setMoments((current) => [{ ...created, profiles: profile, moment_views: [{ count: 0 }], moment_likes: [{ count: 0 }] }, ...current]);
-      }
+      if (composer === "post") { let url = null; let type = "text"; if (file) { const uploaded = await uploadPostMedia(file, session.user.id); url = uploaded.url; type = uploaded.mediaType; } const created = await createPost(session.user.id, caption.trim(), url, type); setPosts((current) => [{ ...created, profiles: profile, likes: [{ count: 0 }], comments: [{ count: 0 }] }, ...current]); }
+      else { if (!file) throw new Error("Choose a photo or video for a Moment."); const uploaded = await uploadMomentMedia(file, session.user.id); const created = await createMoment(session.user.id, uploaded.url, uploaded.mediaType, caption.trim()); setMoments((current) => [{ ...created, profiles: profile, moment_views: [{ count: 0 }], moment_likes: [{ count: 0 }] }, ...current]); }
       closeComposer();
-    } catch (e) { setError(e.message || "Publishing failed."); }
-    finally { setPublishing(false); }
+    } catch (e) { setError(e.message || "Publishing failed."); } finally { setPublishing(false); }
   }
-
-  async function toggleLike(post) {
-    try {
-      const wasLiked = !!liked[post.id];
-      if (wasLiked) await unlikePost(post.id, session.user.id); else await likePost(post.id, session.user.id);
-      setLiked((current) => ({ ...current, [post.id]: !wasLiked }));
-      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, likes: [{ count: Math.max(0, (item.likes?.[0]?.count || 0) + (wasLiked ? -1 : 1)) }] } : item));
-    } catch (e) { setError(e.message || "Could not update like."); }
-  }
-
+  async function toggleLike(post) { try { const wasLiked = !!liked[post.id]; if (wasLiked) await unlikePost(post.id, session.user.id); else await likePost(post.id, session.user.id); setLiked((current) => ({ ...current, [post.id]: !wasLiked })); setPosts((current) => current.map((item) => item.id === post.id ? { ...item, likes: [{ count: Math.max(0, (item.likes?.[0]?.count || 0) + (wasLiked ? -1 : 1)) }] } : item)); } catch (e) { setError(e.message || "Could not update like."); } }
   async function comment(post, text) { return addComment(post.id, session.user.id, text); }
   async function removePost(post) { try { await deletePost(post.id); setPosts((current) => current.filter((item) => item.id !== post.id)); } catch (e) { setError(e.message || "Could not delete post."); } }
-
-  const openAccount = (account) => {
-    if (!account?.id) return;
-    setViewedProfile({ ...account });
-    setProfileTab("posts");
-    setActive("view-profile");
-  };
+  const openAccount = (account) => { if (!account?.id) return; setViewedProfile({ ...account }); setProfileTab("posts"); setActive("view-profile"); };
   const openOwnProfile = () => { setViewedProfile(null); setProfileTab("posts"); setActive("profile"); };
   const openSaved = () => { setViewedProfile(null); setProfileTab("saved"); setActive("profile"); };
-
   if (booting) return <div className="boot"><div className="brand-mark">C</div><h1>Convogram</h1><p>Loading your social world…</p></div>;
-  if (!session) return <div className="auth"><div className="auth-card"><div className="brand-row"><div className="brand-mark">C</div><div><b>Convogram</b><span>Everything social, together.</span></div></div><div className="auth-copy"><small>THE SOCIAL SUPERAPP</small><h1>{authMode === "login" ? "Welcome back." : "Create your Convogram."}</h1><p>Post, chat, call, discover Shorts, follow people and build communities from one account.</p></div><form onSubmit={authenticate}>{authMode === "signup" && <><label>Display name<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label><label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} /></label></>}<label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label><label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>{error && <div className="alert error">{error}</div>}{notice && <div className="alert">{notice}</div>}<button className="primary">{authMode === "login" ? "Log in" : "Create account"}</button></form><button className="switch" onClick={() => setAuthMode((m) => m === "login" ? "signup" : "login")}>{authMode === "login" ? "New to Convogram? Create an account" : "Already have an account? Log in"}</button></div></div>;
-
+  if (!session) return <div className="auth"><div className="auth-card"><div className="brand-row"><div className="brand-mark">C</div><div><b>Convogram</b><span>Everything social, together.</span></div></div><div className="auth-copy"><small>THE SOCIAL SUPERAPP</small><h1>{authMode === "login" ? "Welcome back." : "Create your Convogram."}</h1><p>Post, chat, call, discover Shorts, follow people and build communities from one account.</p></div><form onSubmit={authenticate}>{authMode === "signup" && <><label>Display name<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label><label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} /></label>}<label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label><label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>{error && <div className="alert error">{error}</div>}{notice && <div className="alert">{notice}</div>}<button className="primary">{authMode === "login" ? "Log in" : "Create account"}</button></form><button className="switch" onClick={() => setAuthMode((m) => m === "login" ? "signup" : "login")}>{authMode === "login" ? "New to Convogram? Create an account" : "Already have an account? Log in"}</button></div></div>;
   return <div className="app" style={{ overflowX: "hidden" }}>
     <header className="topbar"><button className="brand-button" onClick={() => setActive("home")}><span className="brand-mark small">C</span><b>Convogram</b></button><div className="top-search" /><div className="top-actions"><button className="top-create" onClick={() => openComposer("post")}><Plus size={20} /><span>Post</span></button><button onClick={() => setActive("search")}><Search size={20} /></button><button onClick={() => setFeatureSuite(true)}><SlidersHorizontal size={20} /></button><button className="notification" onClick={openNotifications}><Bell size={20} />{unread > 0 && <i>{unread > 9 ? "9+" : unread}</i>}</button><button onClick={openOwnProfile}><span className="avatar mini">{avatar(profile)}</span></button></div></header>
     {notifications && <NotificationsPanel userId={session.user.id} onClose={() => { closeNotifications(); refresh(); }} />}
     <main className="layout"><aside className="sidebar"><div className="side-profile"><span className="avatar">{avatar(profile)}</span><div><b>{profile?.display_name || "You"}</b><small>@{profile?.username || "user"}</small></div></div>{nav.map(([id, label, Icon]) => <button key={id} className={active === id ? "active" : ""} onClick={() => id === "profile" ? openOwnProfile() : setActive(id)}><Icon size={20} /><span>{label}</span>{id === "messages" && <em>Chat</em>}</button>)}<div className="sidebar-divider" /><button className="create-nav" onClick={() => openComposer("post")}><Plus size={20} /><span>Create post</span></button><button onClick={() => setActive("search")}><Search size={20} /><span>Search</span></button><button onClick={() => setFeatureSuite(true)}><SlidersHorizontal size={20} /><span>All features</span></button><button onClick={() => setActive("settings")}><Settings size={20} /><span>Settings</span></button><button className="logout" onClick={logout}>↪<span>Log out</span></button></aside>
       <section className="content">
         {error && <div className="global-alert">{error}<button onClick={() => setError("")}><X size={15} /></button></div>}
-        {active === "home" && <><section className="panel first-panel"><div className="section-head"><div><small>24 HOURS</small><h2>Moments</h2></div><div className="section-actions"><button onClick={() => openComposer("moment")}><Plus size={16} /> Add Moment</button><button onClick={() => openComposer("post")}><Plus size={16} /> Post</button></div></div><MomentsRow moments={moments} currentUserId={session.user.id} onAddMoment={() => openComposer("moment")} loading={false} error={null} /></section><section className="panel"><div className="section-head"><div><small>YOUR FEED</small><h2>For you</h2></div><div className="section-actions"><button onClick={() => openComposer("post")}><Plus size={16} /> Create post</button><button onClick={refresh}><Compass size={16} /> Refresh</button></div></div>{loadingFeed ? <div className="empty">Loading your feed…</div> : posts.length ? posts.map((p) => <PostCard key={p.id} post={p} currentUserId={session.user.id} isLiked={!!liked[p.id]} onLike={() => toggleLike(p)} onUnlike={() => toggleLike(p)} onComment={(t) => comment(p, t)} onDelete={() => removePost(p)} likeCount={p.likes?.[0]?.count || 0} commentCount={p.comments?.[0]?.count || 0} />) : <div className="empty"><Sparkles size={28} /><h3>Your feed starts here.</h3><p>Share the first thing your people will see.</p><button className="primary" onClick={() => openComposer("post")}>Create your first post</button></div>}</section></>}
-        {active === "search" && <SearchPage currentUserId={session.user.id} onBack={goBack} onOpenProfile={openAccount} />}
-        {active === "shorts" && <section className="page"><div className="page-head"><div><small>SHORT VIDEO</small><h1>Shorts</h1><p>Short videos, sounds and creators.</p></div><button onClick={() => getShortsForDiscover(30, 0).then((x) => setShorts(x || []))}><Zap size={18} /> Refresh</button></div><ShortsPanel shorts={shorts} userId={session.user.id} /></section>}
-        {active === "messages" && <section className="page"><MessagesPanel userId={session.user.id} /></section>}
-        {active === "communities" && <section className="page"><CommunitiesPanel userId={session.user.id} /></section>}
-        {active === "profile" && <ProfilePanel key="own-profile" userId={session.user.id} viewerId={session.user.id} profile={profile} stats={stats} initialTab={profileTab} onCreatePost={() => openComposer("post")} onCreateMoment={() => openComposer("moment")} onMessage={() => setActive("messages")} onEdit={() => setActive("profile-options")} onProfileUpdated={setProfile} onPeople={(type, account) => type === "profile" && openAccount(account)} />}
-        {active === "view-profile" && viewedProfile && <ProfilePanel key={`viewed-${viewedProfile.id}`} userId={viewedProfile.id} viewerId={session.user.id} profile={viewedProfile} stats={undefined} initialTab={profileTab} onCreatePost={() => openComposer("post")} onCreateMoment={() => openComposer("moment")} onMessage={() => setActive("messages")} onEdit={() => setActive("profile-options")} onProfileUpdated={setProfile} onPeople={(type, account) => type === "profile" && openAccount(account)} />}
-        {active === "profile-options" && <ProfileOptionsPage profile={profile} onBack={goBack} onViewProfile={openOwnProfile} onSaved={openSaved} onEditProfile={() => setActive("edit-profile")} onSettings={() => setActive("settings")} onLogout={logout} />}
-        {active === "settings" && <SettingsPage profile={profile} userId={session.user.id} email={email} onBack={goBack} onEditProfile={() => setActive("edit-profile")} onLogout={logout} onProfileUpdated={setProfile} />}
-        {active === "edit-profile" && <EditProfilePage profile={profile} userId={session.user.id} onBack={goBack} onProfileUpdated={setProfile} />}
+        {active === "home" && <><section className="panel first-panel"><div className="section-head"><div><small>24 HOURS</small><h2>Moments</h2></div><div className="section-actions"><button onClick={() => openComposer("moment")}><Plus size={16}/> Add Moment</button><button onClick={() => openComposer("post")}><Plus size={16}/> Post</button></div></div><MomentsRow moments={moments} currentUserId={session.user.id} onAddMoment={() => openComposer("moment")} loading={false} error={null}/></section><section className="panel"><div className="section-head"><div><small>YOUR FEED</small><h2>For you</h2></div><div className="section-actions"><button onClick={() => openComposer("post")}><Plus size={16}/> Create post</button><button onClick={refresh}><Compass size={16}/> Refresh</button></div></div>{loadingFeed?<div className="empty">Loading your feed…</div>:posts.length?posts.map(p=><PostCard key={p.id} post={p} currentUserId={session.user.id} isLiked={!!liked[p.id]} onLike={()=>toggleLike(p)} onUnlike={()=>toggleLike(p)} onComment={t=>comment(p,t)} onDelete={()=>removePost(p)} likeCount={p.likes?.[0]?.count||0} commentCount={p.comments?.[0]?.count||0}/>):<div className="empty"><Sparkles size={28}/><h3>Your feed starts here.</h3><p>Share the first thing your people will see.</p><button className="primary" onClick={()=>openComposer("post")}>Create your first post</button></div>}</section></>}
+        {active === "search" && <SearchPage currentUserId={session.user.id} onBack={goBack} onOpenProfile={openAccount}/>} {active === "shorts" && <section className="page"><div className="page-head"><div><small>SHORT VIDEO</small><h1>Shorts</h1><p>Short videos, sounds and creators.</p></div><button onClick={()=>getShortsForDiscover(30,0).then(x=>setShorts(x||[]))}><Zap size={18}/> Refresh</button></div><ShortsPanel shorts={shorts} userId={session.user.id}/></section>} {active === "messages" && <section className="page"><MessagesPanel userId={session.user.id}/></section>} {active === "communities" && <section className="page"><CommunitiesPanel userId={session.user.id}/></section>}
+        {active === "profile" && <ProfilePanel key="own-profile" userId={session.user.id} viewerId={session.user.id} profile={profile} stats={stats} initialTab={profileTab} onCreatePost={()=>openComposer("post")} onCreateMoment={()=>openComposer("moment")} onMessage={()=>setActive("messages")} onEdit={()=>setActive("profile-options")} onProfileUpdated={setProfile} onPeople={(type,account)=>type==="profile"&&openAccount(account)}/>} 
+        {active === "view-profile" && viewedProfile && <ProfilePanel key={`viewed-${viewedProfile.id}`} userId={viewedProfile.id} viewerId={session.user.id} profile={viewedProfile} stats={undefined} initialTab={profileTab} onCreatePost={()=>openComposer("post")} onCreateMoment={()=>openComposer("moment")} onMessage={()=>setActive("messages")} onEdit={()=>setActive("profile-options")} onProfileUpdated={setProfile} onPeople={(type,account)=>type==="profile"&&openAccount(account)}/>} 
+        {active === "profile-options" && <ProfileOptionsPage profile={profile} onBack={goBack} onViewProfile={openOwnProfile} onSaved={openSaved} onEditProfile={()=>setActive("edit-profile")} onSettings={()=>setActive("settings")} onLogout={logout}/>} {active === "settings" && <SettingsPage profile={profile} userId={session.user.id} email={email} onBack={goBack} onEditProfile={()=>setActive("edit-profile")} onLogout={logout} onProfileUpdated={setProfile}/>} {active === "edit-profile" && <EditProfilePage profile={profile} userId={session.user.id} onBack={goBack} onProfileUpdated={setProfile}/>} 
       </section>
     </main>
-    <nav className="mobile-nav">{nav.map(([id, label, Icon]) => <button key={id} className={active === id ? "active" : ""} onClick={() => id === "profile" ? openOwnProfile() : setActive(id)}><Icon size={21} /><span>{label}</span></button>)}</nav>
-    {composer && <div className="modal-backdrop" onClick={closeComposer}><div className="composer" onClick={(e) => e.stopPropagation()}><div className="composer-head"><div><small>{composer === "post" ? "CREATE" : "24 HOURS"}</small><h2>{composer === "post" ? "New post" : "New Moment"}</h2></div><button onClick={closeComposer}><X /></button></div><textarea value={caption} onChange={(e) => setCaption(e.target.value)} placeholder={composer === "post" ? "What's happening?" : "Add a caption…"} /><label className="file-picker"><Camera size={18} /><span>{file ? file.name : "Add photo or video"}</span><input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files?.[0] || null)} /></label><button className="primary publish" disabled={publishing || (!caption.trim() && !file)} onClick={publish}>{publishing ? "Publishing…" : "Publish"}</button></div></div>}
-    {featureSuite && <FeatureSuite userId={session.user.id} onClose={() => setFeatureSuite(false)} />}
-  </div>;
+    <nav className="mobile-nav">{nav.map(([id,label,Icon])=><button key={id} className={active===id?"active":""} onClick={()=>id==="profile"?openOwnProfile():setActive(id)}><Icon size={21}/><span>{label}</span></button>)}</nav>
+    {composer&&<div className="modal-backdrop" onClick={closeComposer}><div className="composer" onClick={e=>e.stopPropagation()}><div className="composer-head"><div><small>{composer==="post"?"CREATE":"24 HOURS"}</small><h2>{composer==="post"?"New post":"New Moment"}</h2></div><button onClick={closeComposer}><X/></button></div><textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder={composer==="post"?"What's happening?":"Add a caption…"}/><label className="file-picker"><Camera size={18}/><span>{file?file.name:"Add photo or video"}</span><input type="file" accept="image/*,video/*" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><button className="primary publish" disabled={publishing||(!caption.trim()&&!file)} onClick={publish}>{publishing?"Publishing…":"Publish"}</button></div></div>}
+    {featureSuite&&<FeatureSuite userId={session.user.id} onClose={()=>setFeatureSuite(false)}/>}</div>;
 }
-
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(<App/>);
