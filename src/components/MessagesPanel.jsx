@@ -96,6 +96,52 @@ export function MessagesPanel(props) {
       }
     };
 
+    const saveMediaToGallery = async (event) => {
+      const button = event.target?.closest?.('button[aria-label="Save to gallery"]');
+      if (!button || !host.contains(button)) return;
+
+      const viewer = button.closest(".convogram-media-viewer");
+      const media = viewer?.querySelector("img.convogram-media-viewer-media, video.convogram-media-viewer-media");
+      if (!media?.src) return;
+
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        if (!Capacitor.isNativePlatform()) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+
+        const { Media } = await import("@capacitor-community/media");
+        let { albums } = await Media.getAlbums();
+        let album = albums?.find((item) => item.name === "Convogram");
+        if (!album) {
+          await Media.createAlbum({ name: "Convogram" });
+          ({ albums } = await Media.getAlbums());
+          album = albums?.find((item) => item.name === "Convogram");
+        }
+        if (!album?.identifier) throw new Error("Convogram gallery album could not be created.");
+
+        const isVideo = media.tagName.toLowerCase() === "video";
+        const fileName = `Convogram-${Date.now()}`;
+        const options = { path: media.src, albumIdentifier: album.identifier, fileName };
+        if (isVideo) await Media.saveVideo(options);
+        else await Media.savePhoto(options);
+
+        button.setAttribute("data-save-complete", "true");
+        button.title = "Saved to gallery";
+        button.setAttribute("aria-label", "Saved to gallery");
+      } catch (error) {
+        console.warn("Convogram gallery save failed.", error);
+        window.dispatchEvent(new CustomEvent("convogram-media-save-error", { detail: error?.message || "Could not save media." }));
+      } finally {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    };
+
     const onAttachCapture = async (event) => {
       const button = event.target?.closest?.('.message-composer button[title="Attach media"]');
       if (!button || !host.contains(button)) return;
@@ -162,6 +208,7 @@ export function MessagesPanel(props) {
     host.addEventListener("touchmove", onTouchMove, { passive: true, capture: true });
     host.addEventListener("touchend", onTouchEnd, { passive: false, capture: true });
     host.addEventListener("click", onClickCapture, { capture: true });
+    host.addEventListener("click", saveMediaToGallery, { capture: true });
     host.addEventListener("click", onAttachCapture, { capture: true });
     host.addEventListener("click", onFileClickCapture, { capture: true });
     window.addEventListener("popstate", onWindowPopCapture, { capture: true });
@@ -175,6 +222,7 @@ export function MessagesPanel(props) {
       host.removeEventListener("touchmove", onTouchMove, true);
       host.removeEventListener("touchend", onTouchEnd, true);
       host.removeEventListener("click", onClickCapture, true);
+      host.removeEventListener("click", saveMediaToGallery, true);
       host.removeEventListener("click", onAttachCapture, true);
       host.removeEventListener("click", onFileClickCapture, true);
       window.removeEventListener("popstate", onWindowPopCapture, true);
