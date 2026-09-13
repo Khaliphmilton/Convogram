@@ -93,46 +93,13 @@ function installUnreadMessageIndicator() {
   let timer = null; let userId = null; let painting = false; let latestConversations = [];
   const badgeClass = "convogram-unread-message-badge";
   const styleBadge = badge => { badge.style.cssText = "display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ed4956;color:#fff;font-size:11px;font-weight:800;line-height:20px;margin-left:auto;flex:0 0 auto;"; };
-  const paintProfile = (node, profile, fallbackType) => {
-    if (!node) return;
-    node.replaceChildren();
-    node.style.position = "relative";
-    node.style.overflow = "visible";
-    const avatarUrl = profile?.avatar_url;
-    if (avatarUrl) {
-      const img = document.createElement("img"); img.src = avatarUrl; img.alt = ""; img.className = "convogram-chat-avatar-image"; img.loading = "lazy"; img.decoding = "async"; img.style.cssText = "width:100%;height:100%;display:block;border-radius:50%;object-fit:cover;"; node.appendChild(img);
-    } else {
-      const fallback = document.createElement("span"); fallback.className = "convogram-chat-avatar-fallback"; fallback.textContent = fallbackType === "group" ? "" : String(profile?.display_name || profile?.username || "?").trim().slice(0, 1).toUpperCase(); fallback.style.cssText = "font-size:15px;font-weight:750;line-height:1;"; node.appendChild(fallback);
-    }
-    if (profile?.is_verified) { const badge = document.createElement("span"); badge.className = "convogram-verified-badge"; badge.textContent = "✓"; badge.setAttribute("aria-label", "Verified"); badge.style.cssText = "position:absolute;right:-2px;bottom:-1px;width:16px;height:16px;display:grid;place-items:center;border-radius:50%;background:#1683ff;color:#fff;border:2px solid #080808;font-size:9px;font-weight:900;line-height:1;box-sizing:border-box;"; node.appendChild(badge); }
-  };
-  const paintAvatars = conversations => {
-    const byTitle = new Map(conversations.map(c => [c._display_name || c.name || (c.type === "group" ? "Group conversation" : "Direct conversation"), c]));
-    document.querySelectorAll(".conversation-item").forEach(item => {
-      const title = item.querySelector(".conversation-copy strong")?.textContent?.trim() || "";
-      const conversation = byTitle.get(title); if (!conversation) return;
-      paintProfile(item.querySelector(".conversation-avatar"), conversation.type === "direct" ? conversation._direct_profile : (conversation.avatar_url ? { avatar_url: conversation.avatar_url } : null), conversation.type);
-    });
-    const chatTitle = document.querySelector(".chat-head-copy strong")?.textContent?.trim() || "";
-    const active = byTitle.get(chatTitle);
-    if (active) paintProfile(document.querySelector(".chat-head .conversation-avatar"), active.type === "direct" ? active._direct_profile : (active.avatar_url ? { avatar_url: active.avatar_url } : null), active.type);
-  };
   const paint = async () => {
     if (!userId || painting) return; painting = true;
     try {
       const conversations = await getConversations(userId); latestConversations = conversations;
-      paintAvatars(conversations);
       const total = conversations.reduce((sum, item) => sum + (Number(item.unread_count) || 0), 0);
       document.querySelectorAll(`.${badgeClass}`).forEach(node => node.remove());
       [...document.querySelectorAll("button")].filter(button => button.textContent?.trim().startsWith("Messages")).forEach(button => { if (total > 0) { const badge = document.createElement("span"); badge.className = badgeClass; badge.textContent = total > 99 ? "99+" : String(total); badge.setAttribute("aria-label", `${total} unread messages`); styleBadge(badge); button.appendChild(badge); } });
-      const chatItems = [...document.querySelectorAll(".conversation-item")];
-      chatItems.forEach(item => {
-        const title = item.querySelector(".conversation-copy strong")?.textContent?.trim() || "";
-        const conversation = conversations.find(c => (c._display_name || c.name || (c.type === "group" ? "Group conversation" : "Direct conversation")) === title);
-        if (!conversation || !(Number(conversation.unread_count) > 0)) return;
-        const copy = item.querySelector(".conversation-copy") || item;
-        const badge = document.createElement("span"); badge.className = badgeClass; badge.textContent = conversation.unread_count > 99 ? "99+" : String(conversation.unread_count); badge.setAttribute("aria-label", `${conversation.unread_count} unread messages in ${title}`); styleBadge(badge); copy.appendChild(badge);
-      });
     } catch (_) {} finally { painting = false; }
   };
   const longPressState = { timer: null, item: null, fired: false };
@@ -143,44 +110,13 @@ function installUnreadMessageIndicator() {
     if (!conversationId) return;
     item.dataset.conversationId = conversationId;
     removeLongPressMenu();
-    const backdrop = document.createElement("div");
-    backdrop.className = "convogram-chat-action-backdrop";
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px;box-sizing:border-box;";
-    const sheet = document.createElement("div");
-    sheet.style.cssText = "width:min(440px,100%);background:var(--panel,#171717);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:8px;box-shadow:0 18px 60px rgba(0,0,0,.35);";
-    const titleNode = document.createElement("div");
-    titleNode.textContent = "Chat options";
-    titleNode.style.cssText = "padding:12px 14px 10px;font-size:13px;font-weight:700;opacity:.65;";
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.textContent = "Delete chat";
-    deleteButton.style.cssText = "width:100%;border:0;background:transparent;color:#ed4956;text-align:left;padding:14px;border-radius:12px;font:inherit;font-weight:700;cursor:pointer;";
-    deleteButton.addEventListener("click", async event => {
-      event.stopPropagation();
-      const confirmed = window.confirm("Delete this chat from your messages?");
-      if (!confirmed) return;
-      deleteButton.disabled = true;
-      deleteButton.textContent = "Deleting…";
-      try {
-        await deleteConversationForUser(conversationId, userId);
-        item.remove();
-        removeLongPressMenu();
-        window.dispatchEvent(new CustomEvent("convogram-chat-deleted", { detail: { conversationId } }));
-      } catch (error) {
-        deleteButton.disabled = false;
-        deleteButton.textContent = "Delete chat";
-        window.alert(error?.message || "Could not delete chat.");
-      }
-    });
-    const cancelButton = document.createElement("button");
-    cancelButton.type = "button";
-    cancelButton.textContent = "Cancel";
-    cancelButton.style.cssText = "width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:14px;border-radius:12px;font:inherit;font-weight:600;cursor:pointer;";
-    cancelButton.addEventListener("click", removeLongPressMenu);
-    sheet.append(titleNode, deleteButton, cancelButton);
-    backdrop.appendChild(sheet);
-    backdrop.addEventListener("click", event => { if (event.target === backdrop) removeLongPressMenu(); });
-    document.body.appendChild(backdrop);
+    const backdrop = document.createElement("div"); backdrop.className = "convogram-chat-action-backdrop"; backdrop.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px;box-sizing:border-box;";
+    const sheet = document.createElement("div"); sheet.style.cssText = "width:min(440px,100%);background:var(--panel,#171717);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:8px;box-shadow:0 18px 60px rgba(0,0,0,.35);";
+    const titleNode = document.createElement("div"); titleNode.textContent = "Chat options"; titleNode.style.cssText = "padding:12px 14px 10px;font-size:13px;font-weight:700;opacity:.65;";
+    const deleteButton = document.createElement("button"); deleteButton.type = "button"; deleteButton.textContent = "Delete chat"; deleteButton.style.cssText = "width:100%;border:0;background:transparent;color:#ed4956;text-align:left;padding:14px;border-radius:12px;font:inherit;font-weight:700;cursor:pointer;";
+    deleteButton.addEventListener("click", async event => { event.stopPropagation(); const confirmed = window.confirm("Delete this chat from your messages?"); if (!confirmed) return; deleteButton.disabled = true; deleteButton.textContent = "Deleting…"; try { await deleteConversationForUser(conversationId, userId); item.remove(); removeLongPressMenu(); window.dispatchEvent(new CustomEvent("convogram-chat-deleted", { detail: { conversationId } })); } catch (error) { deleteButton.disabled = false; deleteButton.textContent = "Delete chat"; window.alert(error?.message || "Could not delete chat."); } });
+    const cancelButton = document.createElement("button"); cancelButton.type = "button"; cancelButton.textContent = "Cancel"; cancelButton.style.cssText = "width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:14px;border-radius:12px;font:inherit;font-weight:600;cursor:pointer;"; cancelButton.addEventListener("click", removeLongPressMenu);
+    sheet.append(titleNode, deleteButton, cancelButton); backdrop.appendChild(sheet); backdrop.addEventListener("click", event => { if (event.target === backdrop) removeLongPressMenu(); }); document.body.appendChild(backdrop);
   };
   const bindChatLongPress = () => {
     document.querySelectorAll(".conversation-item").forEach(item => {
@@ -188,26 +124,15 @@ function installUnreadMessageIndicator() {
       item.dataset.chatLongPressBound = "1";
       const title = item.querySelector(".conversation-copy strong")?.textContent?.trim() || "";
       item.dataset.conversationId = item.getAttribute("data-conversation-id") || item.getAttribute("value") || item.dataset.id || latestConversations.find(c => (c._display_name || c.name || (c.type === "group" ? "Group conversation" : "Direct conversation")) === title)?.id || "";
-      const start = event => {
-        if (event.button !== undefined && event.button !== 0) return;
-        longPressState.fired = false; longPressState.item = item; clearTimeout(longPressState.timer);
-        longPressState.timer = setTimeout(() => { longPressState.fired = true; if (navigator.vibrate) navigator.vibrate(20); showChatActionMenu(item); }, 550);
-      };
+      const start = event => { if (event.button !== undefined && event.button !== 0) return; longPressState.fired = false; longPressState.item = item; clearTimeout(longPressState.timer); longPressState.timer = setTimeout(() => { longPressState.fired = true; if (navigator.vibrate) navigator.vibrate(20); showChatActionMenu(item); }, 550); };
       const cancel = () => clearTimeout(longPressState.timer);
-      item.addEventListener("pointerdown", start, { passive: true });
-      item.addEventListener("pointerup", event => { cancel(); if (longPressState.fired && longPressState.item === item) { event.preventDefault(); event.stopImmediatePropagation(); } });
-      item.addEventListener("pointercancel", cancel);
-      item.addEventListener("pointerleave", cancel);
-      item.addEventListener("contextmenu", event => { event.preventDefault(); clearTimeout(longPressState.timer); longPressState.fired = true; showChatActionMenu(item); });
-      item.addEventListener("click", event => { if (longPressState.fired) { event.preventDefault(); event.stopImmediatePropagation(); longPressState.fired = false; } });
+      item.addEventListener("pointerdown", start, { passive: true }); item.addEventListener("pointerup", event => { cancel(); if (longPressState.fired && longPressState.item === item) { event.preventDefault(); event.stopImmediatePropagation(); } }); item.addEventListener("pointercancel", cancel); item.addEventListener("pointerleave", cancel); item.addEventListener("contextmenu", event => { event.preventDefault(); clearTimeout(longPressState.timer); longPressState.fired = true; showChatActionMenu(item); }); item.addEventListener("click", event => { if (longPressState.fired) { event.preventDefault(); event.stopImmediatePropagation(); longPressState.fired = false; } });
     });
   };
   const observer = typeof MutationObserver !== "undefined" ? new MutationObserver(bindChatLongPress) : null;
   if (observer) observer.observe(document.body, { childList: true, subtree: true });
   bindChatLongPress();
-  const start = async () => {
-    const { data } = await supabase.auth.getSession(); userId = data?.session?.user?.id || null; await paint(); if (timer) clearInterval(timer); timer = setInterval(() => { paint(); bindChatLongPress(); }, 2500);
-  };
+  const start = async () => { const { data } = await supabase.auth.getSession(); userId = data?.session?.user?.id || null; await paint(); if (timer) clearInterval(timer); timer = setInterval(() => { paint(); bindChatLongPress(); }, 2500); };
   start();
   const auth = supabase.auth.onAuthStateChange((_event, session) => { userId = session?.user?.id || null; paint(); });
   return () => { if (timer) clearInterval(timer); auth.data?.subscription?.unsubscribe(); observer?.disconnect(); removeLongPressMenu(); };
