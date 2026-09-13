@@ -2,3 +2,24 @@
 .messages-panel.chat-open .lucide-corner-up-left{display:none!important}
 .messages-panel.chat-open button:has(.lucide-corner-up-left){min-width:52px!important;width:auto!important;padding:0 10px!important;gap:5px!important}
 .messages-panel.chat-open button:has(.lucide-corner-up-left)::after{content:"Reply";font-size:12px;font-weight:600;color:inherit;line-height:1}
+
+/* Mobile shell / viewport correction. */
+@media(max-width:820px){
+.app:not(.chat-mode) .topbar{position:fixed!important;top:0!important;left:0!important;right:0!important;width:100%!important;height:56px!important;z-index:80!important}
+.app:not(.chat-mode) .layout{padding-top:56px!important}
+.app:not(.chat-mode) .content{min-height:calc(100vh - 56px)!important}
+.app.chat-mode{height:100dvh!important;min-height:100dvh!important;overflow:hidden!important}
+.app.chat-mode .topbar{display:none!important}
+.app.chat-mode .layout{display:block!important;width:100%!important;max-width:none!important;height:100dvh!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+.app.chat-mode .content{height:100dvh!important;min-height:0!important;width:100%!important;margin:0!important;padding:0!important;overflow:hidden!important}
+.app.chat-mode .mobile-nav{display:none!important}
+.app.chat-mode .messages-panel.chat-open{height:100%!important;min-height:0!important;width:100%!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important}
+.app.chat-mode .messages-panel.chat-open>.chat-window{height:100%!important;min-height:0!important}
+}
+@media(max-width:560px){
+.app:not(.chat-mode) .topbar{height:56px!important}
+.app:not(.chat-mode) .layout{padding-top:56px!important}
+.app.chat-mode .messages-panel.chat-open>.chat-window .chat-head{height:60px!important;min-height:60px!important;flex-basis:60px!important;padding-top:0!important}
+.app.chat-mode .messages-panel.chat-open>.chat-window .message-stream{padding:12px 10px 14px!important}
+.app.chat-mode .messages-panel.chat-open>.chat-window .message-composer{height:60px!important;min-height:60px!important;flex-basis:60px!important;padding-top:9px!important;padding-bottom:9px!important}
+}
