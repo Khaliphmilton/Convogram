@@ -1,17 +1,32 @@
-/* Keep Convogram content below the Android system status bar.
-   Capacitor/Android may render edge-to-edge, so use the OS-provided inset
-   instead of a hard-coded top margin. */
+/* Android safe-area handling.
+   Keep the app header below the system status bar without moving the
+   page content a second time. env() is preferred; the 24px fallback
+   covers Android WebViews that report a zero CSS safe-area inset. */
 html,
 body {
   background: #071426;
 }
 
 #root {
-  padding-top: env(safe-area-inset-top, 0px);
-  min-height: calc(100vh - env(safe-area-inset-top, 0px));
+  min-height: 100vh;
+}
+
+.topbar {
+  top: 0;
+  padding-top: max(env(safe-area-inset-top, 0px), 24px);
+  height: calc(64px + max(env(safe-area-inset-top, 0px), 24px));
+  align-items: center;
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    height: calc(56px + max(env(safe-area-inset-top, 0px), 24px));
+    padding-top: max(env(safe-area-inset-top, 0px), 24px);
+  }
 }
 
 /* The splash remains full-screen while its visible content respects the inset. */
 #convogram-splash {
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: max(env(safe-area-inset-top, 0px), 24px);
+  box-sizing: border-box;
 }
