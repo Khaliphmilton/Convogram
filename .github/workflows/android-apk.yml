@@ -56,25 +56,30 @@ jobs:
           test -n "$ANDROID_KEY_ALIAS" || { echo "ANDROID_KEY_ALIAS is empty"; exit 1; }
           test -n "$ANDROID_KEY_PASSWORD" || { echo "ANDROID_KEY_PASSWORD is empty"; exit 1; }
 
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > convogram-source.keystore
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > convogram-source.keystore
           test -s convogram-source.keystore || { echo "Decoded keystore is empty"; exit 1; }
 
-          echo "Validating the permanent Convogram signing key..."
-          STORE_INFO="$(keytool -list -keystore convogram-source.keystore -storepass "$ANDROID_KEYSTORE_PASSWORD")"
-          echo "$STORE_INFO" | grep -E 'Keystore type:|Provider:|Your keystore contains' || true
+          echo "Detecting the permanent Convogram keystore format..."
+          STORE_TYPE=""
+          if keytool -list -keystore convogram-source.keystore -storetype PKCS12 -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            STORE_TYPE="PKCS12"
+          elif keytool -list -keystore convogram-source.keystore -storetype JKS -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            STORE_TYPE="JKS"
+          else
+            echo "GitHub could not open the supplied keystore with the stored keystore password."
+            echo "The workflow will not create or replace the permanent signing key."
+            echo "Confirm that ANDROID_KEYSTORE_BASE64 was generated from ~/convogram-release.jks and that ANDROID_KEYSTORE_PASSWORD matches that key."
+            exit 1
+          fi
 
-          STORE_TYPE="$(printf '%s\n' "$STORE_INFO" | awk -F': ' '/Keystore type:/ {print $2; exit}')"
-          case "$STORE_TYPE" in
-            PKCS12|JKS) ;;
-            *) echo "Unsupported or undetected keystore type: $STORE_TYPE"; exit 1 ;;
-          esac
-
+          echo "Detected keystore format: $STORE_TYPE"
           echo "Checking permanent key alias..."
           keytool -list -keystore convogram-source.keystore -storetype "$STORE_TYPE" \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS"
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
 
           if [ "$STORE_TYPE" = "PKCS12" ]; then
             echo "Converting the same permanent key container to JKS for Gradle..."
+            rm -f convogram-release.jks
             keytool -importkeystore -noprompt \
               -srckeystore convogram-source.keystore \
               -srcstoretype PKCS12 \
@@ -143,5 +148,3 @@ jobs:
           files: Convogram.apk
           generate_release_notes: true
           make_latest: true
-
-# Trigger release build after signing-key refresh.
