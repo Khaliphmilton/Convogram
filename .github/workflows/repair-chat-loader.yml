@@ -1,8 +1,8 @@
 name: repair-chat-loader
 on:
   push:
-    branches: [main]
-
+    branches:
+      - main
 jobs:
   repair:
     if: github.event.head_commit.message != 'Fix chat opening and message loading'
@@ -11,15 +11,22 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Patch chat loader and black screen
+      - name: Patch source
+        shell: bash
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
           import re
-
           p = Path('src/components/MessagesPanel.jsx')
           s = p.read_text()
-          pattern = r'  async function loadConversation\(id\) \{.*?(?=  useEffect\(\(\) => \{ if \(userId\) loadConversations\(\); \}, \[userId, initialConversationId\]\);)'
+          start = s.find('async function loadConversation(id)')
+          marker = 'useEffect(() => { if (userId) loadConversations(); }, [userId, initialConversationId]);'
+          end = s.find(marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('chat loader markers not found')
+          prefix_start = s.rfind('  ', 0, start)
+          if prefix_start < 0:
+              prefix_start = start
           new = '''  async function loadConversation(id) {
     if (!id || !userId) return;
     setDetails(null); setMessages([]); setRemoteOnline(false); setLastOutgoingRead(false); setError("");
@@ -46,23 +53,20 @@ jobs:
     }
   }
 '''
-          s2, count = re.subn(pattern, new, s, count=1, flags=re.S)
-          if count != 1:
-              raise SystemExit('loadConversation pattern not found')
-          p.write_text(s2)
+          s = s[:prefix_start] + new + s[end:]
+          p.write_text(s)
 
           c = Path('src/components/MessagesPanel.css')
           css = c.read_text()
-          css2, count = re.subn(r'\.messages-panel\.chat-open\{[^}]*\}', '.messages-panel.chat-open{position:relative;width:100%;height:100%;min-height:0;z-index:1;background:#080808;border:0;border-radius:0;display:block;overflow:hidden}', css, count=1)
-          if count != 1:
+          css, n = re.subn(r'\.messages-panel\.chat-open\{[^}]*\}', '.messages-panel.chat-open{position:relative;width:100%;height:100%;min-height:0;z-index:1;background:#080808;border:0;border-radius:0;display:block;overflow:hidden}', css, count=1)
+          if n != 1:
               raise SystemExit('chat-open CSS rule not found')
-          c.write_text(css2)
+          c.write_text(css)
           PY
-          rm -f .github/workflows/repair-chat-loader.yml
       - name: Commit repair
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/MessagesPanel.jsx src/components/MessagesPanel.css .github/workflows/repair-chat-loader.yml
+          git add src/components/MessagesPanel.jsx src/components/MessagesPanel.css
           git diff --cached --quiet || git commit -m 'Fix chat opening and message loading'
           git push
