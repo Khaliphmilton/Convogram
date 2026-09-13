@@ -18,11 +18,22 @@ const authPattern = /  async function authenticate\(e\) \{[\s\S]*?\n  async func
 if (!authPattern.test(source)) throw new Error("Could not locate authentication handler.");
 source = source.replace(authPattern, `${newAuth}\n  async function logout`);
 
-const bootScreenPattern = /  if \(booting\) return <div className="boot"><div className="brand-mark">C<\\/div><h1>Convogram<\\/h1><p>Loading your social world…<\\/p><\\/div>;/;
+// Remove the old web startup splash. Android has its own controlled launch theme.
+const bootScreenPattern = /  if \(booting\) return <div className="boot"><div className="brand-mark">C<\/div><h1>Convogram<\/h1><p>Loading your social world…<\/p><\/div>;/;
 if (!bootScreenPattern.test(source)) throw new Error("Could not locate the startup splash screen.");
 source = source.replace(bootScreenPattern, "  if (booting) return null;");
 
-const errorBoundary = `\nclass ConvogramErrorBoundary extends Component {\n  constructor(props) { super(props); this.state = { failed: false, message: "" }; }\n  static getDerivedStateFromError(error) { return { failed: true, message: error?.message || "Convogram hit an unexpected error." }; }\n  componentDidCatch(error) { console.error("Convogram render crash", error); }\n  render() {\n    if (!this.state.failed) return this.props.children;\n    return <div className="auth"><div className="auth-card"><div className="brand-row"><div className="brand-mark">C</div><div><b>Convogram</b><span>Everything social, together.</span></div></div><div className="auth-copy"><small>RECOVERED FROM ERROR</small><h1>Convogram needs to reload.</h1><p>{this.state.message}</p></div><button className="primary" onClick={() => window.location.reload()}>Reload Convogram</button></div></div>;\n  }\n}\n`;
+const errorBoundary = `
+class ConvogramErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { failed: false, message: "" }; }
+  static getDerivedStateFromError(error) { return { failed: true, message: error?.message || "Convogram hit an unexpected error." }; }
+  componentDidCatch(error) { console.error("Convogram render crash", error); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <div className="auth"><div className="auth-card"><div className="brand-row"><div className="brand-mark">C</div><div><b>Convogram</b><span>Everything social, together.</span></div></div><div className="auth-copy"><small>RECOVERED FROM ERROR</small><h1>Convogram needs to reload.</h1><p>{this.state.message}</p></div><button className="primary" onClick={() => window.location.reload()}>Reload Convogram</button></div></div>;
+  }
+}
+`;
 if (!source.includes("class ConvogramErrorBoundary")) {
   source = source.replace('import { useEffect, useRef, useState } from "react";', 'import { Component, useEffect, useRef, useState } from "react";');
   source = source.replace("createRoot(document.getElementById(\"root\")).render(<App />);", `${errorBoundary}\ncreateRoot(document.getElementById(\"root\")).render(<ConvogramErrorBoundary><App /></ConvogramErrorBoundary>);`);
