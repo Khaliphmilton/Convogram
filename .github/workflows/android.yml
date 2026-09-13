@@ -28,6 +28,12 @@ jobs:
       - name: Create Android project
         run: npx cap add android
 
+      - name: Install SVG icon converter
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
+
+      - name: Generate Convogram launcher icon
+        run: node scripts/generate-android-icon.mjs
+
       - name: Sync Capacitor
         run: npx cap sync android
 
