@@ -89,14 +89,7 @@ function findMessageTarget(target, host) {
 }
 
 function findChatBackButton(root) {
-  const buttons = root?.querySelectorAll?.("button") || [];
-  for (const button of buttons) {
-    const svg = button.querySelector?.("svg");
-    const iconClass = svg?.getAttribute?.("class") || "";
-    const label = `${button.getAttribute?.("aria-label") || ""} ${button.getAttribute?.("title") || ""}`.toLowerCase();
-    if (iconClass.includes("chevron-left") || label.includes("back") || label.includes("close conversation")) return button;
-  }
-  return null;
+  return root?.querySelector?.(".chat-back-button") || null;
 }
 
 export function MessagesPanel(props) {
@@ -105,6 +98,7 @@ export function MessagesPanel(props) {
   const [busy, setBusy] = useState(false);
   const pressRef = useRef({ timer: null, element: null, message: null, triggered: false, x: 0, y: 0 });
   const chatHistoryRef = useRef(false);
+  const suppressPopRef = useRef(false);
 
   const clearPress = () => {
     if (pressRef.current.timer) window.clearTimeout(pressRef.current.timer);
@@ -206,28 +200,34 @@ export function MessagesPanel(props) {
 
     const syncChatHistory = () => {
       const backButton = findChatBackButton(host);
-      if (backButton && !chatHistoryRef.current) {
+      const chatOpen = Boolean(backButton);
+      if (chatOpen && !chatHistoryRef.current) {
         window.history.pushState({ ...(window.history.state || {}), convogramChat: true }, "", window.location.href);
         chatHistoryRef.current = true;
-      } else if (!backButton) {
+      } else if (!chatOpen) {
         chatHistoryRef.current = false;
       }
     };
 
     const onPopState = () => {
+      if (suppressPopRef.current) {
+        suppressPopRef.current = false;
+        chatHistoryRef.current = false;
+        return;
+      }
       const backButton = findChatBackButton(host);
       if (!backButton) return;
-      window.history.pushState({ ...(window.history.state || {}), convogramChat: true }, "", window.location.href);
       backButton.click();
     };
 
     const onBackButtonClick = (event) => {
-      const button = event.target?.closest?.("button");
+      const button = event.target?.closest?.(".chat-back-button");
       if (!button || button !== findChatBackButton(host)) return;
+      if (!chatHistoryRef.current) return;
       window.setTimeout(() => {
-        if (!findChatBackButton(host)) {
-          window.history.replaceState(window.history.state, "", window.location.href);
-          chatHistoryRef.current = false;
+        if (!findChatBackButton(host) && chatHistoryRef.current) {
+          suppressPopRef.current = true;
+          window.history.back();
         }
       }, 0);
     };
@@ -243,6 +243,7 @@ export function MessagesPanel(props) {
       host.removeEventListener("click", onBackButtonClick, true);
       window.removeEventListener("popstate", onPopState);
       chatHistoryRef.current = false;
+      suppressPopRef.current = false;
     };
   }, []);
 
@@ -316,7 +317,7 @@ export function MessagesPanel(props) {
   };
 
   return <div ref={hostRef} style={{ display: "contents" }}>
-    <OriginalMessagesPanel {...props} />
+    <OriginalMessagesPanel {...props} onBack={() => {}} />
     {menu && <div className="convogram-longpress-menu" style={{ left: menu.left, top: menu.top }} role="menu" onClick={(e) => e.stopPropagation()}>
       <div className="convogram-longpress-reactions">
         {REACTIONS.map((r) => <button key={r} type="button" disabled={busy} onClick={() => reactMessage(r)} aria-label={`React ${r}`}>{r}</button>)}
