@@ -42,12 +42,49 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Build debug APK
+      - name: Configure permanent release signing
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > convogram-release.jks
+          cat >> app/build.gradle <<'EOF'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("../convogram-release.jks")
+                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                      storeType "PKCS12"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Prepare APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Convogram.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk Convogram.apk
+
+      - name: Verify APK signature
+        run: |
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose Convogram.apk
 
       - name: Create permanent GitHub Release
         uses: softprops/action-gh-release@v2
@@ -57,7 +94,7 @@ jobs:
           body: |
             ## Convogram Android
 
-            Download the latest Convogram APK below and install it on an Android phone.
+            This is the signed release APK. It is signed with Convogram's permanent release key so future updates can install over this version.
 
             **APK:** Convogram.apk
           files: Convogram.apk
