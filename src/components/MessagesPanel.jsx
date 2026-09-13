@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { App as CapacitorApp } from "@capacitor/app";
 import { supabase } from "../lib/supabase";
 import { addMessageReaction, deleteMessage } from "../lib/messages";
 import { MessagesPanel as OriginalMessagesPanel } from "./MessagesPanelOriginal";
@@ -196,16 +197,28 @@ export function MessagesPanel(props) {
     const host = hostRef.current;
     if (!host) return undefined;
 
-    const onPopState = (event) => {
+    const closeOpenChat = () => {
       const backButton = findChatBackButton(host);
-      if (!backButton) return;
-      event.stopImmediatePropagation?.();
-      window.history.pushState({ ...(window.history.state || {}), convogramChatGuard: true }, "", window.location.href);
+      if (!backButton) return false;
       backButton.click();
+      return true;
     };
 
+    const onPopState = (event) => {
+      if (!findChatBackButton(host)) return;
+      event.stopImmediatePropagation?.();
+      closeOpenChat();
+    };
+
+    const backButtonListener = CapacitorApp.addListener("backButton", () => {
+      closeOpenChat();
+    });
+
     window.addEventListener("popstate", onPopState, true);
-    return () => window.removeEventListener("popstate", onPopState, true);
+    return () => {
+      backButtonListener.then?.((listener) => listener.remove()).catch?.(() => {});
+      window.removeEventListener("popstate", onPopState, true);
+    };
   }, []);
 
   const close = () => { setMenu(null); setBusy(false); };
