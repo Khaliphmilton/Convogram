@@ -1,1 +1,1 @@
-Build a signed release APK using the permanent Convogram signing key.
+Signed release artifact upload refresh.
