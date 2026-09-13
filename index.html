@@ -35,22 +35,6 @@
           if (handled) event.stopImmediatePropagation();
         }
       }, true);
-
-      // On mobile web/PWA, enter fullscreen from the user's chat-open gesture so
-      // the browser address/navigation chrome cannot cover the chat UI.
-      document.addEventListener("click", (event) => {
-        const opener = event.target?.closest?.(".conversation-list [data-conversation-id], .conversation-list button, .conversation-list .conversation-item");
-        if (!opener) return;
-        const root = document.documentElement;
-        if (!document.fullscreenElement && root.requestFullscreen) {
-          root.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
-        }
-      }, true);
-
-      document.addEventListener("fullscreenchange", () => {
-        document.documentElement.classList.toggle("convogram-fullscreen", Boolean(document.fullscreenElement));
-      });
-
       window.setTimeout(() => document.getElementById("convogram-splash")?.classList.add("hide"), 2200);
     </script>
     <script type="module" src="/src/media-picker-flow.js"></script>
