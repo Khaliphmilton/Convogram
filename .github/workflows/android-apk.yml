@@ -53,16 +53,17 @@ jobs:
       - name: Generate Convogram Android branding
         run: node scripts/generate-android-icon.mjs
 
+      # Uses the repository secrets already configured for Convogram.
       - name: Prepare Android signing key
         env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -e
-          test -n "$KEYSTORE_B64" || { echo "KEYSTORE_BASE64 secret is missing"; exit 1; }
-          test -n "$KEYSTORE_PASSWORD" || { echo "KEYSTORE_PASSWORD secret is missing"; exit 1; }
-          test -n "$KEY_ALIAS" || { echo "KEY_ALIAS secret is missing"; exit 1; }
+          test -n "$KEYSTORE_B64" || { echo "ANDROID_KEYSTORE_BASE64 secret is missing"; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "ANDROID_KEYSTORE_PASSWORD secret is missing"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "ANDROID_KEY_ALIAS secret is missing"; exit 1; }
           printf '%s' "$KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/convogram-release.jks"
           chmod 600 "$GITHUB_WORKSPACE/convogram-release.jks"
           keytool -list -keystore "$GITHUB_WORKSPACE/convogram-release.jks" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
@@ -70,13 +71,13 @@ jobs:
       - name: Build signed release APK
         working-directory: android
         env:
-          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -e
-          test -n "$STORE_PASSWORD" || { echo "KEYSTORE_PASSWORD secret is missing"; exit 1; }
-          test -n "$KEY_PASSWORD" || { echo "KEY_PASSWORD secret is missing"; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "ANDROID_KEYSTORE_PASSWORD secret is missing"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "ANDROID_KEY_PASSWORD secret is missing"; exit 1; }
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/convogram-release.jks" \
             -Pandroid.injected.signing.store.password="$STORE_PASSWORD" \
