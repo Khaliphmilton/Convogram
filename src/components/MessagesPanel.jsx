@@ -88,11 +88,23 @@ function findMessageTarget(target, host) {
   return null;
 }
 
+function findChatBackButton(root) {
+  const buttons = root?.querySelectorAll?.("button") || [];
+  for (const button of buttons) {
+    const svg = button.querySelector?.("svg");
+    const iconClass = svg?.getAttribute?.("class") || "";
+    const label = `${button.getAttribute?.("aria-label") || ""} ${button.getAttribute?.("title") || ""}`.toLowerCase();
+    if (iconClass.includes("chevron-left") || label.includes("back") || label.includes("close conversation")) return button;
+  }
+  return null;
+}
+
 export function MessagesPanel(props) {
   const hostRef = useRef(null);
   const [menu, setMenu] = useState(null);
   const [busy, setBusy] = useState(false);
   const pressRef = useRef({ timer: null, element: null, message: null, triggered: false, x: 0, y: 0 });
+  const chatHistoryRef = useRef(false);
 
   const clearPress = () => {
     if (pressRef.current.timer) window.clearTimeout(pressRef.current.timer);
@@ -187,6 +199,52 @@ export function MessagesPanel(props) {
       window.removeEventListener("resize", onScroll);
     };
   }, [menu]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return undefined;
+
+    const syncChatHistory = () => {
+      const backButton = findChatBackButton(host);
+      if (backButton && !chatHistoryRef.current) {
+        window.history.pushState({ ...(window.history.state || {}), convogramChat: true }, "", window.location.href);
+        chatHistoryRef.current = true;
+      } else if (!backButton) {
+        chatHistoryRef.current = false;
+      }
+    };
+
+    const onPopState = () => {
+      const backButton = findChatBackButton(host);
+      if (!backButton) return;
+      window.history.pushState({ ...(window.history.state || {}), convogramChat: true }, "", window.location.href);
+      backButton.click();
+    };
+
+    const onBackButtonClick = (event) => {
+      const button = event.target?.closest?.("button");
+      if (!button || button !== findChatBackButton(host)) return;
+      window.setTimeout(() => {
+        if (!findChatBackButton(host)) {
+          window.history.replaceState(window.history.state, "", window.location.href);
+          chatHistoryRef.current = false;
+        }
+      }, 0);
+    };
+
+    const observer = new MutationObserver(syncChatHistory);
+    observer.observe(host, { childList: true, subtree: true });
+    host.addEventListener("click", onBackButtonClick, true);
+    window.addEventListener("popstate", onPopState);
+    syncChatHistory();
+
+    return () => {
+      observer.disconnect();
+      host.removeEventListener("click", onBackButtonClick, true);
+      window.removeEventListener("popstate", onPopState);
+      chatHistoryRef.current = false;
+    };
+  }, []);
 
   const close = () => { setMenu(null); setBusy(false); };
   const messageText = (message) => message.content || (message.message_type === "image" ? "Photo" : message.message_type === "video" ? "Video" : message.message_type === "audio" ? "Voice message" : "Attachment");
