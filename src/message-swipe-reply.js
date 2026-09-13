@@ -1,28 +1,93 @@
-const SWIPE_TRIGGER = 64;
-const VERTICAL_TOLERANCE = 44;
+const SWIPE_TRIGGER = 72;
+const MAX_SWIPE = 88;
+const VERTICAL_TOLERANCE = 34;
 const state = new WeakMap();
 
 function bubbleFromTarget(target) {
   return target?.closest?.(".message-bubble") || null;
 }
 
-function cancel(bubble) {
+function ensureIndicator(bubble) {
+  let indicator = bubble.querySelector(".convogram-swipe-reply-indicator");
+  if (indicator) return indicator;
+
+  indicator = document.createElement("div");
+  indicator.className = "convogram-swipe-reply-indicator";
+  indicator.setAttribute("aria-hidden", "true");
+  indicator.innerHTML = "<span>↩</span>";
+  Object.assign(indicator.style, {
+    position: "absolute",
+    left: "-52px",
+    top: "50%",
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(7,20,38,.96)",
+    border: "1px solid rgba(75,151,235,.35)",
+    color: "#4b97eb",
+    fontSize: "22px",
+    lineHeight: "1",
+    transform: "translateY(-50%) scale(.65)",
+    opacity: "0",
+    pointerEvents: "none",
+    zIndex: "4",
+    boxSizing: "border-box",
+    transition: "opacity .12s ease, transform .12s ease"
+  });
+
+  const computed = getComputedStyle(bubble);
+  if (computed.position === "static") bubble.style.position = "relative";
+  bubble.appendChild(indicator);
+  return indicator;
+}
+
+function reset(bubble, immediate = false) {
+  const indicator = bubble.querySelector(".convogram-swipe-reply-indicator");
+  bubble.style.transition = immediate ? "none" : "transform .18s cubic-bezier(.2,.8,.2,1)";
+  bubble.style.transform = "translate3d(0,0,0)";
+  if (indicator) {
+    indicator.style.transition = immediate ? "none" : "opacity .16s ease, transform .16s ease";
+    indicator.style.opacity = "0";
+    indicator.style.transform = "translateY(-50%) scale(.65)";
+  }
+  if (immediate) requestAnimationFrame(() => {
+    bubble.style.transition = "";
+    if (indicator) indicator.style.transition = "opacity .12s ease, transform .12s ease";
+  });
+}
+
+function finish(bubble, shouldReply) {
   const current = state.get(bubble);
   if (!current) return;
-  state.delete(bubble);
-  bubble.style.transform = "";
+  current.handled = shouldReply;
+  reset(bubble);
+
+  if (shouldReply) {
+    requestAnimationFrame(() => {
+      const replyButton = bubble.querySelector('.message-tools button[title="Reply"]');
+      if (replyButton) replyButton.click();
+      state.delete(bubble);
+    });
+  } else {
+    window.setTimeout(() => state.delete(bubble), 190);
+  }
 }
 
 function begin(event) {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   const bubble = bubbleFromTarget(event.target);
   if (!bubble) return;
+  const indicator = ensureIndicator(bubble);
   state.set(bubble, {
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
     active: false,
     handled: false,
+    indicator,
   });
 }
 
@@ -34,39 +99,35 @@ function move(event) {
 
   const dx = event.clientX - current.startX;
   const dy = Math.abs(event.clientY - current.startY);
-  if (dx <= 8 || dy > VERTICAL_TOLERANCE) return;
-
-  current.active = true;
-  const distance = Math.min(dx, SWIPE_TRIGGER);
-  bubble.style.transform = `translateX(${distance}px)`;
-  if (distance >= SWIPE_TRIGGER) {
-    current.handled = true;
-    bubble.style.transform = "translateX(0)";
-    bubble.dispatchEvent(new MouseEvent("contextmenu", {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      clientX: event.clientX,
-      clientY: event.clientY,
-    }));
-    requestAnimationFrame(() => {
-      const replyButton = bubble.querySelector('.message-tools button[title="Reply"]');
-      if (replyButton) replyButton.click();
-      state.delete(bubble);
-    });
+  if (!current.active) {
+    if (dy > VERTICAL_TOLERANCE || Math.abs(dx) < 8) return;
+    if (dx < 0) return;
+    current.active = true;
+    bubble.setPointerCapture?.(event.pointerId);
+    bubble.style.transition = "none";
   }
+
+  if (dx < 0) return;
+  const distance = Math.min(MAX_SWIPE, dx * 0.82);
+  const progress = Math.min(1, distance / SWIPE_TRIGGER);
+  bubble.style.transform = `translate3d(${distance}px,0,0)`;
+  current.indicator.style.opacity = String(Math.min(1, progress * 1.15));
+  current.indicator.style.transform = `translateY(-50%) scale(${0.65 + progress * 0.35})`;
 }
 
 function end(event) {
-  const bubble = bubbleFromTarget(event.target);
+  const bubble = bubbleFromTarget(event.target) || [...state.keys()].find((item) => state.get(item)?.pointerId === event.pointerId);
   if (!bubble) return;
   const current = state.get(bubble);
   if (!current || current.pointerId !== event.pointerId) return;
-  if (!current.handled) cancel(bubble);
+
+  const distance = Math.max(0, event.clientX - current.startX);
+  const shouldReply = current.active && distance >= SWIPE_TRIGGER;
+  bubble.releasePointerCapture?.(event.pointerId);
+  finish(bubble, shouldReply);
 }
 
 document.addEventListener("pointerdown", begin, { passive: true });
 document.addEventListener("pointermove", move, { passive: true });
 document.addEventListener("pointerup", end, { passive: true });
 document.addEventListener("pointercancel", end, { passive: true });
-document.addEventListener("pointerleave", end, { passive: true });
