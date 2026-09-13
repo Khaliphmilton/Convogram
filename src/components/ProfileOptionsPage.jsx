@@ -6,10 +6,9 @@ import "./ProfileOptionsPage.css";
 const SAVED_ACCOUNTS_KEY = "convogram_saved_accounts";
 function readSavedAccounts() { try { return JSON.parse(localStorage.getItem(SAVED_ACCOUNTS_KEY) || "[]"); } catch { return []; } }
 function saveAccount(account) { if (!account?.id) return; const current = readSavedAccounts().filter((item) => item.id !== account.id); localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify([{ id: account.id, display_name: account.display_name || "Convogram User", username: account.username || "user", email: account.email || "" }, ...current].slice(0, 5))); }
-function consumeDirectSwitchFlag() { try { const open = sessionStorage.getItem("convogram:open-switch-account") === "1"; if (open) sessionStorage.removeItem("convogram:open-switch-account"); return open; } catch { return false; } }
 
 export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSaved, onEditProfile, onSettings, onLogout }) {
-  const [switcherOpen, setSwitcherOpen] = useState(consumeDirectSwitchFlag);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [savedAccounts, setSavedAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [switchPassword, setSwitchPassword] = useState("");
@@ -18,11 +17,28 @@ export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSa
   const displayName = profile?.display_name || "Convogram User";
   const username = profile?.username || "user";
   const initial = displayName.slice(0, 1).toUpperCase();
-  useEffect(() => { const account = { id: profile?.id, display_name: displayName, username, email: email || "" }; if (account.id) saveAccount(account); setSavedAccounts(readSavedAccounts()); }, [profile?.id, displayName, username, email]);
+
+  useEffect(() => {
+    const account = { id: profile?.id, display_name: displayName, username, email: email || "" };
+    if (account.id) saveAccount(account);
+    setSavedAccounts(readSavedAccounts());
+
+    // Open the switcher after mounting. Doing this in an effect avoids the
+    // React StrictMode double-initialization issue that could consume the flag
+    // before the screen became visible.
+    try {
+      if (sessionStorage.getItem("convogram:open-switch-account") === "1") {
+        sessionStorage.removeItem("convogram:open-switch-account");
+        setSwitcherOpen(true);
+      }
+    } catch {}
+  }, [profile?.id, displayName, username, email]);
+
   const emailUs = (subject) => { window.location.href = `mailto:khaliphindustries@gmail.com?subject=${encodeURIComponent(subject)}`; };
   function openSwitcher() { setSavedAccounts(readSavedAccounts()); setSelectedAccount(null); setSwitchPassword(""); setSwitchError(""); setSwitcherOpen(true); }
   function chooseAccount(account) { if (account.id === profile?.id) { setSwitcherOpen(false); return; } setSelectedAccount(account); setSwitchPassword(""); setSwitchError(""); }
   async function switchToAccount() { if (!selectedAccount?.email || !switchPassword) return; setSwitching(true); setSwitchError(""); const { error } = await supabase.auth.signInWithPassword({ email: selectedAccount.email, password: switchPassword }); if (error) setSwitchError(error.message || "Could not switch accounts."); else { saveAccount(selectedAccount); setSwitcherOpen(false); } setSwitching(false); }
+
   return <section className="page profile-options-page">
     <header className="profile-options-head"><button className="profile-options-back" onClick={onBack} aria-label="Back"><ArrowLeft size={20} /></button><div><small>ACCOUNT</small><h1>Menu</h1></div></header>
     <div className="profile-options-user"><div className="avatar profile-options-avatar">{initial}</div><div className="profile-options-identity"><strong>{displayName}</strong><span>@{username}</span></div></div>
