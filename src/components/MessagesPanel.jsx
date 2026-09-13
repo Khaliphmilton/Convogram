@@ -134,6 +134,8 @@ export function MessagesPanel(props) {
         button.setAttribute("data-save-complete", "true");
         button.title = "Saved to gallery";
         button.setAttribute("aria-label", "Saved to gallery");
+        const label = button.querySelector(".media-save-label");
+        if (label) label.textContent = "Saved";
       } catch (error) {
         console.warn("Convogram gallery save failed.", error);
         window.dispatchEvent(new CustomEvent("convogram-media-save-error", { detail: error?.message || "Could not save media." }));
@@ -141,6 +143,13 @@ export function MessagesPanel(props) {
         button.disabled = false;
         button.removeAttribute("aria-busy");
       }
+    };
+
+    const onMediaSaveError = (event) => {
+      const viewer = host.querySelector(".convogram-media-viewer");
+      const errorBox = viewer?.querySelector(".convogram-media-viewer-error");
+      if (!errorBox) return;
+      errorBox.textContent = event.detail || "Could not save media.";
     };
 
     const onAttachCapture = async (event) => {
@@ -214,6 +223,7 @@ export function MessagesPanel(props) {
     host.addEventListener("click", onFileClickCapture, { capture: true });
     window.addEventListener("popstate", onWindowPopCapture, { capture: true });
     window.addEventListener("focus", onFocus);
+    window.addEventListener("convogram-media-save-error", onMediaSaveError);
 
     return () => {
       clearTimer();
@@ -228,6 +238,7 @@ export function MessagesPanel(props) {
       host.removeEventListener("click", onFileClickCapture, true);
       window.removeEventListener("popstate", onWindowPopCapture, true);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("convogram-media-save-error", onMediaSaveError);
     };
   }, []);
 
