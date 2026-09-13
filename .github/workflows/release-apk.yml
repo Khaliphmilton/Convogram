@@ -19,6 +19,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm install
@@ -47,15 +48,29 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Configure installable release signing
+      - name: Configure permanent release signing
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'Missing ANDROID_KEYSTORE_BASE64'; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo 'Missing ANDROID_KEYSTORE_PASSWORD'; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo 'Missing ANDROID_KEY_ALIAS'; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo 'Missing ANDROID_KEY_PASSWORD'; exit 1; }
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > convogram-release.keystore
           python3 - <<'PY'
           from pathlib import Path
           p = Path('app/build.gradle')
           text = p.read_text()
-          if 'signingConfig signingConfigs.debug' not in text:
-              text += '\nandroid {\n    buildTypes {\n        release {\n            signingConfig signingConfigs.debug\n        }\n    }\n}\n'
+          block = '''\nandroid {\n    signingConfigs {\n        release {\n            storeFile file('convogram-release.keystore')\n            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')\n            keyAlias System.getenv('ANDROID_KEY_ALIAS')\n            keyPassword System.getenv('ANDROID_KEY_PASSWORD')\n        }\n    }\n    buildTypes {\n        release {\n            signingConfig signingConfigs.release\n        }\n    }\n}\n'''
+          if 'signingConfig signingConfigs.debug' in text:
+              text = text.replace("\nandroid {\n    buildTypes {\n        release {\n            signingConfig signingConfigs.debug\n        }\n    }\n}\n", "\n")
+          if 'signingConfigs.release' not in text:
+              text += block
           p.write_text(text)
           PY
 
@@ -79,7 +94,7 @@ jobs:
           body: |
             ## Convogram Android — Installable Release APK
 
-            This is the Android release build, not the debug variant.
+            This is the Android release build using the permanent Convogram signing key.
 
             Download **Convogram.apk** and install it on Android.
           files: Convogram.apk
