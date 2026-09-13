@@ -46,7 +46,6 @@ jobs:
           test -n "$ANDROID_KEYSTORE_PASSWORD"
           test -n "$ANDROID_KEY_ALIAS"
           test -n "$ANDROID_KEY_PASSWORD"
-          # Normalize copy/paste artifacts in the Base64 secret.
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -cd 'A-Za-z0-9+/=' > convogram-keystore.b64
           python3 - <<'PY'
           import base64
