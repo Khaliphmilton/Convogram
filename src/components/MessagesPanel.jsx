@@ -51,7 +51,7 @@ function VoiceNote({ src }) {
   </div>;
 }
 
-export function MessagesPanel({ userId, initialConversationId = null, onBack }) {
+export function MessagesPanel({ userId, initialConversationId = null, onBack, onChatOpen }) {
   const [conversations, setConversations] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [details, setDetails] = useState(null);
