@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@capacitor/app": "latest",
+    "@capacitor/camera": "latest",
     "@capacitor/haptics": "latest",
     "@capacitor/push-notifications": "latest",
     "@capacitor/status-bar": "latest",
