@@ -21,8 +21,20 @@ export function MessagesPanel(props) {
     pressRef.current.triggered = false;
   };
 
+  const getReactKey = (row) => {
+    const fiberProp = Object.keys(row || {}).find(k => k.startsWith("__reactFiber$"));
+    let fiber = fiberProp ? row[fiberProp] : null;
+    for (let i = 0; fiber && i < 12; i += 1) {
+      if (fiber.key != null) return String(fiber.key);
+      fiber = fiber.return;
+    }
+    return null;
+  };
+
   const getMessage = (row) => {
-    try { return row?.__convogramMessage || JSON.parse(row?.dataset?.message || "null"); } catch (_) { return null; }
+    const cached = row?.__convogramMessage;
+    if (cached?.id) return cached;
+    try { return row?.dataset?.message ? JSON.parse(row.dataset.message) : null; } catch (_) { return null; }
   };
 
   const openMenu = (row) => {
@@ -114,28 +126,26 @@ export function MessagesPanel(props) {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const rows = host.querySelectorAll(".message-row");
-    rows.forEach((row) => {
+    host.querySelectorAll(".message-row").forEach((row) => {
       const bubble = row.querySelector(".message-bubble");
       const text = bubble?.querySelector(".message-text")?.textContent || "";
       const media = bubble?.querySelector("img, video, audio");
-      const message = {
-        id: row.getAttribute("data-message-id"),
+      row.__convogramMessage = {
+        id: getReactKey(row),
         sender_id: row.classList.contains("mine") ? props.userId : "other",
         content: text,
-        message_type: media?.tagName?.toLowerCase() === "video" ? "video" : media?.tagName?.toLowerCase() === "img" ? "image" : "text",
+        message_type: media?.tagName?.toLowerCase() === "video" ? "video" : media?.tagName?.toLowerCase() === "img" ? "image" : media?.tagName?.toLowerCase() === "audio" ? "audio" : "text",
         media_url: media?.currentSrc || media?.src || null,
         is_deleted: Boolean(bubble?.querySelector(".message-deleted"))
       };
-      row.__convogramMessage = message;
     });
   });
 
-  const close = () => setMenu(null);
+  const close = () => { setMenu(null); setBusy(false); };
 
   const copyMessage = async () => {
     if (!menu?.message) return;
-    const value = menu.message.content || (menu.message.message_type === "image" ? "Photo" : menu.message.message_type === "video" ? "Video" : "Attachment");
+    const value = menu.message.content || (menu.message.message_type === "image" ? "Photo" : menu.message.message_type === "video" ? "Video" : menu.message.message_type === "audio" ? "Voice message" : "Attachment");
     try { await navigator.clipboard.writeText(value); close(); } catch (_) { setBusy(false); }
   };
 
@@ -144,56 +154,38 @@ export function MessagesPanel(props) {
     if (!row) return;
     const x = row.getBoundingClientRect().left + 10;
     try {
-      row.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, touches: [{ clientX: x, clientY: 100 }] }));
-      row.dispatchEvent(new TouchEvent("touchend", { bubbles: true, changedTouches: [{ clientX: x + 90, clientY: 100 }] }));
+      const makeTouch = (clientX) => new Touch({ identifier: Date.now(), target: row, clientX, clientY: 100 });
+      row.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, touches: [makeTouch(x)], changedTouches: [makeTouch(x)] }));
+      row.dispatchEvent(new TouchEvent("touchend", { bubbles: true, touches: [], changedTouches: [makeTouch(x + 90)] }));
     } catch (_) {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     }
     close();
   };
 
   const reactMessage = async (reaction) => {
     if (!menu?.message?.id || !props.userId) return;
-    try {
-      setBusy(true);
-      await addMessageReaction(menu.message.id, props.userId, reaction);
-      close();
-    } catch (e) {
-      console.warn("Convogram reaction failed", e);
-      setBusy(false);
-    }
+    try { setBusy(true); await addMessageReaction(menu.message.id, props.userId, reaction); close(); }
+    catch (e) { console.warn("Convogram reaction failed", e); setBusy(false); }
   };
 
   const deleteMsg = async () => {
     if (!menu?.message?.id || menu.message.sender_id !== props.userId) return;
-    try {
-      setBusy(true);
-      await deleteMessage(menu.message.id);
-      close();
-    } catch (e) {
-      console.warn("Convogram delete failed", e);
-      setBusy(false);
-    }
+    try { setBusy(true); await deleteMessage(menu.message.id); close(); }
+    catch (e) { console.warn("Convogram delete failed", e); setBusy(false); }
   };
 
   const editMessage = () => {
     const row = [...(hostRef.current?.querySelectorAll(".message-row") || [])].find(r => r.__convogramMessage?.id === menu?.message?.id);
-    const button = row?.querySelector('button[aria-label="Edit message"]');
-    if (button) button.click();
-    else {
-      row?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-      window.setTimeout(() => row?.querySelector('button[aria-label="Edit message"]')?.click(), 0);
-    }
+    row?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    window.setTimeout(() => row?.querySelector('button[aria-label="Edit message"]')?.click(), 0);
     close();
   };
 
   const forwardMessage = async () => {
     if (!menu?.message) return;
     const value = menu.message.content || (menu.message.media_url || "Attachment");
-    try {
-      if (navigator.share) await navigator.share({ title: "Convogram message", text: value });
-      else await navigator.clipboard.writeText(value);
-    } catch (_) {}
+    try { if (navigator.share) await navigator.share({ title: "Convogram message", text: value }); else await navigator.clipboard.writeText(value); } catch (_) {}
     close();
   };
 
@@ -205,22 +197,13 @@ export function MessagesPanel(props) {
       if (existing) await supabase.from("message_pins").delete().eq("message_id", menu.message.id).eq("pinned_by", props.userId);
       else await supabase.from("message_pins").insert({ message_id: menu.message.id, pinned_by: props.userId });
       close();
-    } catch (e) {
-      console.warn("Convogram pin failed", e);
-      setBusy(false);
-    }
+    } catch (e) { console.warn("Convogram pin failed", e); setBusy(false); }
   };
 
   const reportMessage = async () => {
     if (!menu?.message?.id || !props.userId || menu.message.sender_id === props.userId) return;
-    try {
-      setBusy(true);
-      await supabase.from("message_reports").insert({ message_id: menu.message.id, reporter_id: props.userId, reason: "other" });
-      close();
-    } catch (e) {
-      console.warn("Convogram report failed", e);
-      setBusy(false);
-    }
+    try { setBusy(true); await supabase.from("message_reports").insert({ message_id: menu.message.id, reporter_id: props.userId, reason: "other" }); close(); }
+    catch (e) { console.warn("Convogram report failed", e); setBusy(false); }
   };
 
   return <div ref={hostRef} style={{ display: "contents" }}>
