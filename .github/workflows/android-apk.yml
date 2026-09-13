@@ -24,6 +24,11 @@ jobs:
         run: npm run build
       - name: Add Android platform
         run: npx cap add android
+      - name: Apply Convogram Android icon and splash branding
+        run: |
+          set -euo pipefail
+          npm install --no-save @capacitor/assets@latest
+          npx @capacitor/assets generate --android --assetPath assets --iconBackgroundColor '#061945' --iconBackgroundColorDark '#00091f' --splashBackgroundColor '#061945' --splashBackgroundColorDark '#00091f' --logoSplashScale 0.18
       - name: Add Android camera microphone and storage permissions
         run: node scripts/add-android-permissions.mjs
       - name: Sync Capacitor
@@ -100,7 +105,7 @@ jobs:
         with:
           tag_name: convogram-${{ github.run_number }}
           name: Convogram Android ${{ github.run_number }}
-          body: Signed release APK using Convogram's permanent signing key.
+          body: Signed release APK using Convogram's permanent signing key, with branded icon and splash screen.
           files: Convogram.apk
           generate_release_notes: true
           make_latest: true
