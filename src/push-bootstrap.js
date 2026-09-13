@@ -9,18 +9,23 @@ async function registerDevice(session) {
   started = true;
   try {
     let permission = await PushNotifications.checkPermissions();
-    if (permission.receive !== "granted") {
-      permission = await PushNotifications.requestPermissions();
-    }
+    if (permission.receive !== "granted") permission = await PushNotifications.requestPermissions();
     if (permission.receive !== "granted") return;
 
     await PushNotifications.addListener("registration", async ({ value: token }) => {
       if (!token || !supabase || !session?.user?.id) return;
-      const { error } = await supabase.from("push_device_tokens").upsert(
-        { user_id: session.user.id, token, platform: "android", updated_at: new Date().toISOString() },
-        { onConflict: "user_id,token" }
+      const { error } = await supabase.from("notification_devices").upsert(
+        {
+          user_id: session.user.id,
+          endpoint: token,
+          p256dh: null,
+          auth: null,
+          platform: "android",
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "endpoint" }
       );
-      if (error) console.warn("Convogram push token save failed", error);
+      if (error) console.warn("Convogram Android push token save failed", error);
     });
 
     await PushNotifications.addListener("registrationError", (error) => {
