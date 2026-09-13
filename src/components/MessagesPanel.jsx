@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { MessagesPanel as OriginalMessagesPanel } from "./MessagesPanelOriginal";
 import "./MessagesPanel.interaction-fix.css";
+import "./MessagesMediaViewer.css";
 
 export function MessagesPanel(props) {
   const hostRef = useRef(null);
