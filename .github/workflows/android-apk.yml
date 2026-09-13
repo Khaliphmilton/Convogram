@@ -60,9 +60,9 @@ jobs:
           set -e
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do test -f android/app/src/main/res/mipmap-$d/ic_launcher.png; done
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do test -f android/app/src/main/res/mipmap-$d/ic_launcher_round.png; done
-          test -f android/app/src/main/res/drawable-nodpi/convogram_splash.png
           test -f android/app/src/main/res/drawable/convogram_launch_background.xml
           test -f android/app/src/main/res/values-v31/convogram_launch.xml
+          test ! -e android/app/src/main/res/drawable-nodpi/convogram_splash.png
           test ! -e android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
           test ! -e android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           if grep -Rqi 'capacitor_splash\|splash_screen' android/app/src/main; then echo 'Default Capacitor splash resource remains'; exit 1; fi
