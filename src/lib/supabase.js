@@ -11,6 +11,27 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
+// Prevent a slow/unreachable network request from keeping Convogram on the
+// startup splash forever. Supabase requests fail fast and the app can still
+// render the login/app shell and show a useful error state.
+const DEFAULT_TIMEOUT_MS = 8000;
+const timedFetch = (input, init = {}) => {
+  const controller = new AbortController();
+  const externalSignal = init.signal;
+  const onAbort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort(externalSignal.reason);
+    else externalSignal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  const timeoutId = setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), DEFAULT_TIMEOUT_MS);
+
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => {
+    clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", onAbort);
+  });
+};
+
 // Keep the Supabase session persistent on this device so a user stays logged in
 // after closing/reopening Convogram. Supabase manages the session tokens in its
 // auth storage; Convogram never stores the user's password.
@@ -19,6 +40,9 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+  },
+  global: {
+    fetch: timedFetch,
   },
 });
 
