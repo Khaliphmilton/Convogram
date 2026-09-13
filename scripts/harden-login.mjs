@@ -18,10 +18,12 @@ const authPattern = /  async function authenticate\(e\) \{[\s\S]*?\n  async func
 if (!authPattern.test(source)) throw new Error("Could not locate authentication handler.");
 source = source.replace(authPattern, `${newAuth}\n  async function logout`);
 
-// Remove the old web startup splash. Android has its own controlled launch theme.
-const bootScreenPattern = /  if \(booting\) return <div className="boot"><div className="brand-mark">C<\/div><h1>Convogram<\/h1><p>Loading your social world…<\/p><\/div>;/;
+// Keep a branded in-app startup screen while Supabase restores the session.
+// Android has a matching native launch theme, so there is no blank transition.
+const bootScreenPattern = /  if \(booting\) return (?:<div className="boot"><div className="brand-mark">C<\/div><h1>Convogram<\/h1><p>Loading your social world…<\/p><\/div>|null);/;
+const brandedBoot = `  if (booting) return <div className="boot" style={{ minHeight: "100vh", background: "#071426", color: "#fff", display: "grid", placeItems: "center", textAlign: "center", padding: "24px" }}><div><img src="/convogram-icon.svg" alt="Convogram" style={{ width: "132px", height: "132px", borderRadius: "32px", display: "block", margin: "0 auto 22px", boxShadow: "0 18px 55px rgba(0,0,0,.35)" }} /><h1 style={{ margin: "0 0 8px", fontSize: "32px", letterSpacing: "-0.04em" }}>Convogram</h1><p style={{ margin: "0 0 18px", color: "rgba(255,255,255,.62)", fontSize: "13px" }}>Everything social, together.</p><small style={{ color: "rgba(255,255,255,.42)", fontWeight: 700, letterSpacing: ".22em" }}>KHALIPH INDUSTRIES</small></div></div>;`;
 if (!bootScreenPattern.test(source)) throw new Error("Could not locate the startup splash screen.");
-source = source.replace(bootScreenPattern, "  if (booting) return null;");
+source = source.replace(bootScreenPattern, brandedBoot);
 
 const errorBoundary = `
 class ConvogramErrorBoundary extends Component {
