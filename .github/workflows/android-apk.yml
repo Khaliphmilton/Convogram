@@ -23,6 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Harden login and account startup
+        run: node scripts/harden-login.mjs
+
       - name: Build web app
         run: npm run build
 
@@ -38,7 +41,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Capacitor Android and create native project
+      - name: Create Android app shell
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap add android
@@ -53,6 +56,21 @@ jobs:
       - name: Generate Convogram Android branding
         run: node scripts/generate-android-icon.mjs
 
+      - name: Remove all default Capacitor branding
+        run: |
+          set -e
+          rm -f android/app/src/main/res/drawable/splash.png
+          rm -f android/app/src/main/res/drawable/splash.xml
+          rm -f android/app/src/main/res/drawable/splash_background.xml
+          rm -f android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          rm -f android/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          rm -f android/app/src/main/res/mipmap-anydpi/ic_launcher_foreground.xml
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_foreground.xml
+          find android/app/src/main/res -type f \( -iname '*capacitor*' -o -iname '*splash*' \) -delete
+          grep -RIl "@capacitor/splash-screen" android/app/src/main/res 2>/dev/null | xargs -r rm -f
+
       - name: Verify Convogram Android branding
         run: |
           set -e
@@ -65,12 +83,11 @@ jobs:
           test ! -e android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           test ! -e android/app/src/main/res/drawable/splash.png
           test ! -e android/app/src/main/res/drawable/splash.xml
-          if grep -Rqs "@capacitor/splash-screen" android; then
-            echo "Capacitor SplashScreen resources are still present"
+          if grep -Rqs "@capacitor/splash-screen" android/app/src/main/res; then
+            echo "Default Capacitor splash resources remain"
             exit 1
           fi
 
-      # Uses the repository secrets already configured for Convogram.
       - name: Prepare Android signing key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
