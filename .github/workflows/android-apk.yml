@@ -56,15 +56,22 @@ jobs:
           test -n "$ANDROID_KEY_ALIAS" || { echo "ANDROID_KEY_ALIAS is empty"; exit 1; }
           test -n "$ANDROID_KEY_PASSWORD" || { echo "ANDROID_KEY_PASSWORD is empty"; exit 1; }
 
-          # GitHub secret values can contain wrapped/newline whitespace after pasting.
-          # Remove whitespace before decoding and accept missing Base64 padding.
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' > convogram-keystore.b64
+          # Normalize pasted Base64 safely. GitHub secret values may contain
+          # line breaks or surrounding whitespace. Remove all whitespace and
+          # restore standard padding before decoding.
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\r\n\t ' > convogram-keystore.b64
           python3 - <<'PY'
-          import base64
+          import base64, binascii
           from pathlib import Path
-          s = Path('convogram-keystore.b64').read_text().strip()
+          s = Path('convogram-keystore.b64').read_text()
+          if not s:
+              raise SystemExit('Keystore Base64 is empty after normalization')
           s += '=' * (-len(s) % 4)
-          Path('convogram-source.keystore').write_bytes(base64.b64decode(s, validate=True))
+          try:
+              data = base64.b64decode(s, validate=True)
+          except (binascii.Error, ValueError) as e:
+              raise SystemExit(f'Invalid keystore Base64: {e}')
+          Path('convogram-source.keystore').write_bytes(data)
           PY
           test -s convogram-source.keystore || { echo "Decoded keystore is empty"; exit 1; }
 
