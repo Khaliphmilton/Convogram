@@ -35,10 +35,18 @@ export function installPostPermissionPrompt() {
     const button = event.target?.closest?.("button");
     if (!button) return;
     const text = (button.textContent || "").trim().toLowerCase();
-    if (text === "post" || text.includes("create post") || text.includes("add moment")) {
-      requestPostPermissions();
-    }
+    if (text === "post" || text.includes("create post") || text.includes("add moment")) requestPostPermissions();
   };
   document.addEventListener("click", handler, true);
   return () => document.removeEventListener("click", handler, true);
+}
+
+export function installCallPermissionPrompt() {
+  if (!isAndroid() || typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return () => {};
+  const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  navigator.mediaDevices.getUserMedia = async (constraints) => {
+    const stream = await original(constraints);
+    return stream;
+  };
+  return () => { navigator.mediaDevices.getUserMedia = original; };
 }
