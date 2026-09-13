@@ -50,7 +50,30 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > convogram-release.jks
+          set -e
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > convogram-source.keystore
+
+          # Normalize the permanent key into a JKS container for Android Gradle.
+          if keytool -list -keystore convogram-source.keystore -storetype PKCS12 -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            keytool -importkeystore -noprompt \
+              -srckeystore convogram-source.keystore \
+              -srcstoretype PKCS12 \
+              -srcstorepass "$ANDROID_KEYSTORE_PASSWORD" \
+              -srcalias "$ANDROID_KEY_ALIAS" \
+              -srckeypass "$ANDROID_KEY_PASSWORD" \
+              -destkeystore convogram-release.jks \
+              -deststoretype JKS \
+              -deststorepass "$ANDROID_KEYSTORE_PASSWORD" \
+              -destalias "$ANDROID_KEY_ALIAS" \
+              -destkeypass "$ANDROID_KEY_PASSWORD"
+          else
+            keytool -list -keystore convogram-source.keystore -storetype JKS -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+            cp convogram-source.keystore convogram-release.jks
+          fi
+
+          keytool -list -keystore convogram-release.jks -storetype JKS \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+
           cat >> app/build.gradle <<'EOF'
 
           android {
@@ -60,7 +83,7 @@ jobs:
                       storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
                       keyAlias System.getenv("ANDROID_KEY_ALIAS")
                       keyPassword System.getenv("ANDROID_KEY_PASSWORD")
-                      storeType "PKCS12"
+                      storeType "JKS"
                   }
               }
               buildTypes {
