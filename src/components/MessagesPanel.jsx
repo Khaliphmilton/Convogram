@@ -5,6 +5,7 @@ import { uploadMessageMedia, uploadVoiceMessage } from "../lib/storage";
 import { supabase } from "../lib/supabase";
 import { VerifiedBadge } from "./VerifiedBadge";
 import "./MessagesPanel.css";
+import "./MessagesPanel.chat-fix.css";
 
 const REACTIONS = ["❤️", "😂", "👍", "🔥", "😮", "😢"];
 
@@ -224,30 +225,25 @@ export function MessagesPanel({ userId, initialConversationId = null, onBack }) 
         <header className="chat-head">
           <button type="button" className="chat-back-button" onClick={backToChats}><ChevronLeft size={20} /></button>
           <ConversationAvatar conversation={titleConversation} size={38} />
-          <div className="chat-head-copy"><strong>{conversationTitle(titleConversation, userId)}{remoteProfile?.is_verified && <VerifiedBadge verified size={15} />}</strong><span className={remoteOnline ? "chat-presence-status online" : "chat-presence-status offline"}><i />{remoteOnline ? "Online" : "Offline"}</span></div>
-          <div className="chat-call-actions"><button type="button" className="messages-icon-button" title="Voice call" onClick={() => window.dispatchEvent(new CustomEvent("convogram-start-call", { detail: { type: "voice", userId: remoteProfile?.id } }))}><Phone size={17} /></button><button type="button" className="messages-icon-button" title="Video call" onClick={() => window.dispatchEvent(new CustomEvent("convogram-start-call", { detail: { type: "video", userId: remoteProfile?.id } }))}><Video size={17} /></button></div>
+          <div className="chat-head-copy"><strong>{conversationTitle(titleConversation, userId)}</strong><span>{remoteOnline ? "Online" : "Offline"}</span></div>
+          <div className="chat-call-actions"><button type="button" className="messages-icon-button" onClick={() => window.dispatchEvent(new CustomEvent("convogram-start-call", { detail: { type: "voice" } }))} disabled={!remoteProfile?.id}><Phone size={17} /></button><button type="button" className="messages-icon-button" onClick={() => window.dispatchEvent(new CustomEvent("convogram-start-call", { detail: { type: "video" } }))} disabled={!remoteProfile?.id}><Video size={17} /></button></div>
         </header>
-        <div ref={messageStreamRef} className="message-stream" onClick={() => setReactionMessageId(null)}>
+        <div ref={messageStreamRef} className="message-stream" onClick={() => reactionMessageId && setReactionMessageId(null)}>
           {messages.length ? messages.map(item => {
-            const mine = item.sender_id === userId; const media = ["image", "video", "audio"].includes(item.message_type); const reactions = item.message_reactions || [];
-            return <div key={item.id} className={`message-row ${mine ? "mine" : "theirs"}`}><div className={`message-bubble ${reactionMessageId === item.id ? "reaction-active" : ""}`} onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }}>
-              {item.reply_to && <div className="message-reply-preview"><div className="reply-preview-label"><Reply size={11} /> Reply</div><div className="reply-preview-text">{item.reply_to.content || item.reply_to.message_type || "Attachment"}</div></div>}
-              {item.is_deleted ? <em>Message deleted</em> : media && item.media_url ? item.message_type === "image" ? <img src={item.media_url} alt="Shared media" className="message-media" /> : item.message_type === "video" ? <video src={item.media_url} className="message-media" controls preload="metadata" /> : <VoiceNote src={item.media_url} /> : <span className="message-text">{item.content || "Attachment"}</span>}
-              {reactionMessageId === item.id && !item.is_deleted && <div className="message-actions" onClick={e => e.stopPropagation()}><div className="reaction-picker">{REACTIONS.map(r => <button type="button" key={r} onClick={() => toggleReaction(item, r)}>{r}</button>)}</div><div className="message-tools"><button type="button" onClick={() => { setReplyingTo(item); setReactionMessageId(null); }}><Reply size={13} /></button>{mine && <button type="button" onClick={() => handleDelete(item)}><Trash2 size={13} /></button>}</div></div>}
-              {reactions.length > 0 && <div className="message-reactions">{[...new Set(reactions.map(r => r.reaction))].map(r => <button type="button" key={r} onClick={() => toggleReaction(item, r)}>{r} {reactions.filter(x => x.reaction === r).length}</button>)}</div>}
-              <small>{item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}{mine && <Check size={12} />}</small>
+            const mine = item.sender_id === userId;
+            const media = ["image", "video", "audio"].includes(item.message_type);
+            const reactions = item.message_reactions || [];
+            const open = reactionMessageId === item.id;
+            return <div key={item.id} className={`message-row ${mine ? "mine" : "theirs"}`}><div className={`message-bubble ${open ? "reaction-active" : ""}`} onContextMenu={e => { e.preventDefault(); setReactionMessageId(item.id); }}>
+              {item.is_deleted ? <em>Message deleted</em> : media && item.media_url ? (item.message_type === "image" ? <img src={item.media_url} alt="Shared media" className="message-media" /> : item.message_type === "video" ? <video src={item.media_url} className="message-media" controls preload="metadata" /> : <VoiceNote src={item.media_url} />) : <span className="message-text">{item.content || "Attachment"}</span>}
+              {open && !item.is_deleted && <div className="message-actions"><div className="reaction-picker">{REACTIONS.map(r => <button key={r} type="button" onClick={() => toggleReaction(item, r)}>{r}</button>)}</div><div className="message-tools"><button type="button" onClick={() => { setReplyingTo(item); setReactionMessageId(null); }}><Reply size={13} /></button>{mine && <button type="button" onClick={() => handleDelete(item)}><Trash2 size={13} /></button>}</div></div>}
+              {reactions.length > 0 && <div className="message-reactions">{[...new Set(reactions.map(r => r.reaction))].map(r => <span key={r}>{r}</span>)}</div>}
+              <small>{new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{mine && <Check size={12} />}</small>
             </div></div>;
           }) : <div className="chat-empty"><MessageCircle size={42} /><h2>Messages</h2><p>Send a message to begin.</p></div>}
         </div>
         {replyingTo && <div className="reply-banner"><div className="reply-banner-copy"><strong>Replying</strong><span>{replyingTo.content || "Attachment"}</span></div><button type="button" onClick={() => setReplyingTo(null)}><X size={14} /></button></div>}
-        <form className="message-composer" onSubmit={handleSend}>
-          <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={handleMedia} />
-          <button type="button" className="messages-icon-button" onClick={() => fileRef.current?.click()} disabled={uploading || recording}><ImagePlus size={19} /></button>
-          {recording ? <button type="button" className="messages-icon-button recording" onClick={stopRecording}><Square size={17} /></button> : <button type="button" className="messages-icon-button" onClick={startRecording} disabled={uploading}><Mic size={19} /></button>}
-          <button type="button" className="messages-icon-button" title="Emoji"><Smile size={19} /></button>
-          <input value={draft} onChange={e => setDraft(e.target.value)} placeholder={recording ? "Recording voice note…" : uploading ? "Uploading…" : "Write a message..."} disabled={uploading || recording} />
-          <button className="send-button" disabled={!draft.trim() || sending || uploading || recording} type="submit"><Send size={18} /></button>
-        </form>
+        <form className="message-composer" onSubmit={handleSend}><input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={handleMedia} /><button type="button" className="messages-icon-button" onClick={() => fileRef.current?.click()} disabled={uploading || recording}><ImagePlus size={19} /></button>{recording ? <button type="button" className="messages-icon-button recording" onClick={stopRecording}><Square size={17} /></button> : <button type="button" className="messages-icon-button" onClick={startRecording} disabled={uploading}><Mic size={19} /></button>}<button type="button" className="messages-icon-button"><Smile size={19} /></button><input value={draft} onChange={e => setDraft(e.target.value)} placeholder={recording ? "Recording voice note…" : uploading ? "Uploading…" : "Write a message..."} disabled={uploading || recording} /><button className="send-button" disabled={!draft.trim() || sending || uploading || recording} type="submit"><Send size={18} /></button></form>
       </> : <div className="chat-loading">Opening messages…</div>}
     </section>}
 
