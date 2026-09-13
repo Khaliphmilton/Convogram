@@ -53,6 +53,23 @@ jobs:
       - name: Generate Convogram Android branding
         run: node scripts/generate-android-icon.mjs
 
+      - name: Verify Convogram Android branding
+        run: |
+          set -e
+          test -f android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          test ! -e android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
+          test ! -e android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          test ! -e android/app/src/main/res/drawable/splash.png
+          test ! -e android/app/src/main/res/drawable/splash.xml
+          if grep -Rqs "@capacitor/splash-screen" android; then
+            echo "Capacitor SplashScreen resources are still present"
+            exit 1
+          fi
+
       # Uses the repository secrets already configured for Convogram.
       - name: Prepare Android signing key
         env:
