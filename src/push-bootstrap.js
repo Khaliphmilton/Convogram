@@ -1,13 +1,19 @@
 import { Capacitor } from "@capacitor/core";
-import { PushNotifications } from "@capacitor/push-notifications";
 import { supabase } from "./lib/supabase";
 
 let started = false;
 
+// Native Android push registration is intentionally opt-in.
+// Calling the Capacitor PushNotifications plugin during the auth transition
+// can terminate the Android process when Firebase/FCM is not configured in
+// the generated native project. Keep login -> feed independent of push.
+const nativePushEnabled = String(import.meta.env.VITE_ENABLE_NATIVE_PUSH || "").toLowerCase() === "true";
+
 async function registerDevice(session) {
-  if (started || !session?.user?.id || Capacitor.getPlatform() !== "android") return;
+  if (!nativePushEnabled || started || !session?.user?.id || Capacitor.getPlatform() !== "android") return;
   started = true;
   try {
+    const { PushNotifications } = await import("@capacitor/push-notifications");
     let permission = await PushNotifications.checkPermissions();
     if (permission.receive !== "granted") permission = await PushNotifications.requestPermissions();
     if (permission.receive !== "granted") return;
@@ -43,7 +49,11 @@ async function registerDevice(session) {
   }
 }
 
-if (Capacitor.getPlatform() === "android" && supabase) {
-  supabase.auth.getSession().then(({ data }) => registerDevice(data?.session));
-  supabase.auth.onAuthStateChange((_event, session) => registerDevice(session));
+if (nativePushEnabled && Capacitor.getPlatform() === "android" && supabase) {
+  const schedule = (session) => {
+    // Never compete with the login -> feed transition.
+    window.setTimeout(() => registerDevice(session), 8000);
+  };
+  supabase.auth.getSession().then(({ data }) => schedule(data?.session));
+  supabase.auth.onAuthStateChange((_event, session) => schedule(session));
 }
