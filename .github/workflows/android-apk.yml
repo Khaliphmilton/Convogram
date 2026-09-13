@@ -1,125 +1,62 @@
 name: Build and Release Convogram Android APK
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
+          cache: npm
+
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
       - name: Build web app
         run: npm run build
-      - name: Add Android platform
-        run: npx cap add android
-      - name: Prepare real Android branding assets
-        run: |
-          set -euo pipefail
-          npm install --no-save @capacitor/assets@latest sharp
-          node - <<'NODE'
-          const sharp = require('sharp');
-          (async () => {
-            await sharp('assets/icon.svg').png().resize(1024, 1024).toFile('assets/icon.png');
-            await sharp('assets/icon.svg').png().resize(1024, 1024).toFile('assets/splash.png');
-          })().catch(err => { console.error(err); process.exit(1); });
-          NODE
-          test -s assets/icon.png
-          test -s assets/splash.png
-      - name: Generate native Android icon and splash resources
-        run: |
-          set -euo pipefail
-          npx @capacitor/assets generate --android --assetPath assets --iconBackgroundColor '#071426' --iconBackgroundColorDark '#020713' --splashBackgroundColor '#071426' --splashBackgroundColorDark '#020713' --logoSplashScale 0.24
-          test -d android/app/src/main/res
-          find android/app/src/main/res -type f \( -name 'ic_launcher*' -o -name 'splash*' \) | head -30
-      - name: Add Android camera microphone and storage permissions
-        run: node scripts/add-android-permissions.mjs
-      - name: Sync Capacitor
-        run: npx cap sync android
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
-      - name: Configure permanent release signing
-        working-directory: android
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Capacitor Android
         run: |
-          set -euo pipefail
-          test -n "$ANDROID_KEYSTORE_BASE64"
-          test -n "$ANDROID_KEYSTORE_PASSWORD"
-          test -n "$ANDROID_KEY_ALIAS"
-          test -n "$ANDROID_KEY_PASSWORD"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -cd 'A-Za-z0-9+/=' > convogram-keystore.b64
-          python3 - <<'PY'
-          import base64
-          from pathlib import Path
-          s=Path('convogram-keystore.b64').read_text().rstrip('=')
-          if not s: raise SystemExit('Keystore Base64 is empty')
-          s += '=' * (-len(s) % 4)
-          try: data=base64.b64decode(s, validate=True)
-          except Exception as e: raise SystemExit(f'Invalid keystore Base64 after normalization: {e}')
-          Path('convogram-source.keystore').write_bytes(data)
-          PY
-          test -s convogram-source.keystore
-          STORE_TYPE=""
-          STORE_PASSWORD=""
-          for p in "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD"; do
-            if keytool -list -keystore convogram-source.keystore -storetype PKCS12 -storepass "$p" >/dev/null 2>&1; then STORE_TYPE=PKCS12; STORE_PASSWORD="$p"; break; fi
-            if keytool -list -keystore convogram-source.keystore -storetype JKS -storepass "$p" >/dev/null 2>&1; then STORE_TYPE=JKS; STORE_PASSWORD="$p"; break; fi
-          done
-          test -n "$STORE_TYPE" || { echo 'GitHub keystore/password mismatch.'; exit 1; }
-          keytool -list -keystore convogram-source.keystore -storetype "$STORE_TYPE" -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
-          KEY_PASSWORD=""
-          for p in "$ANDROID_KEY_PASSWORD" "$ANDROID_KEYSTORE_PASSWORD"; do
-            rm -f convogram-release.jks
-            if keytool -importkeystore -noprompt -srckeystore convogram-source.keystore -srcstoretype "$STORE_TYPE" -srcstorepass "$STORE_PASSWORD" -srcalias "$ANDROID_KEY_ALIAS" -srckeypass "$p" -destkeystore convogram-release.jks -deststoretype JKS -deststorepass "$STORE_PASSWORD" -destalias "$ANDROID_KEY_ALIAS" -destkeypass "$p" >/dev/null 2>&1; then KEY_PASSWORD="$p"; break; fi
-          done
-          test -n "$KEY_PASSWORD" || { echo 'Keystore opens, but key password is incorrect.'; exit 1; }
-          keytool -list -keystore convogram-release.jks -storetype JKS -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
-          {
-            echo 'android {'
-            echo ' signingConfigs { release {'
-            echo '  storeFile file("../convogram-release.jks")'
-            echo '  storePassword System.getenv("CONVOGRAM_STORE_PASSWORD")'
-            echo '  keyAlias System.getenv("CONVOGRAM_KEY_ALIAS")'
-            echo '  keyPassword System.getenv("CONVOGRAM_KEY_PASSWORD")'
-            echo '  storeType "JKS"'
-            echo ' } }'
-            echo ' buildTypes { release { signingConfig signingConfigs.release } }'
-            echo '}'
-          } >> app/build.gradle
-          echo "CONVOGRAM_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "CONVOGRAM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "CONVOGRAM_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
-      - name: Build signed release APK
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap sync android
+
+      - name: Build signed/release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
-      - name: Prepare APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk Convogram.apk
-      - name: Verify APK signature
-        run: $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose Convogram.apk
-      - name: Create permanent GitHub Release
+        run: ./gradlew assembleRelease
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: convogram-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub release and attach APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: convogram-${{ github.run_number }}
-          name: Convogram Android ${{ github.run_number }}
-          body: Signed release APK using Convogram's permanent signing key, with native Convogram icon and splash screen.
-          files: Convogram.apk
-          generate_release_notes: true
-          make_latest: true
+          tag_name: convogram-build-${{ github.run_number }}
+          name: Convogram Android Build ${{ github.run_number }}
+          generate_release_notes: false
+          files: android/app/build/outputs/apk/release/*.apk
