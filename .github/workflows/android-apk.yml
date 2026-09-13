@@ -59,72 +59,114 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > convogram-source.keystore
           test -s convogram-source.keystore || { echo "Decoded keystore is empty"; exit 1; }
 
-          echo "Detecting the permanent Convogram keystore format..."
+          echo "Detecting permanent Convogram keystore format and password..."
           STORE_TYPE=""
-          if keytool -list -keystore convogram-source.keystore -storetype PKCS12 -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
-            STORE_TYPE="PKCS12"
-          elif keytool -list -keystore convogram-source.keystore -storetype JKS -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
-            STORE_TYPE="JKS"
-          else
-            echo "GitHub could not open the supplied keystore with the stored keystore password."
-            echo "The workflow will not create or replace the permanent signing key."
-            echo "Confirm that ANDROID_KEYSTORE_BASE64 was generated from ~/convogram-release.jks and that ANDROID_KEYSTORE_PASSWORD matches that key."
+          STORE_PASSWORD=""
+          KEY_PASSWORD=""
+
+          # Try both existing password secrets as store passwords. This handles
+          # the common case where the two GitHub password fields were accidentally swapped.
+          for candidate_store in "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD"; do
+            if keytool -list -keystore convogram-source.keystore -storetype PKCS12 -storepass "$candidate_store" >/dev/null 2>&1; then
+              STORE_TYPE="PKCS12"
+              STORE_PASSWORD="$candidate_store"
+              break
+            fi
+            if keytool -list -keystore convogram-source.keystore -storetype JKS -storepass "$candidate_store" >/dev/null 2>&1; then
+              STORE_TYPE="JKS"
+              STORE_PASSWORD="$candidate_store"
+              break
+            fi
+          done
+
+          if [ -z "$STORE_TYPE" ]; then
+            echo "The supplied permanent keystore could not be opened with either configured password secret."
+            echo "No new signing key will be created."
             exit 1
           fi
 
           echo "Detected keystore format: $STORE_TYPE"
-          echo "Checking permanent key alias..."
           keytool -list -keystore convogram-source.keystore -storetype "$STORE_TYPE" \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+            -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
 
-          if [ "$STORE_TYPE" = "PKCS12" ]; then
-            echo "Converting the same permanent key container to JKS for Gradle..."
-            rm -f convogram-release.jks
-            keytool -importkeystore -noprompt \
-              -srckeystore convogram-source.keystore \
-              -srcstoretype PKCS12 \
-              -srcstorepass "$ANDROID_KEYSTORE_PASSWORD" \
-              -srcalias "$ANDROID_KEY_ALIAS" \
-              -srckeypass "$ANDROID_KEY_PASSWORD" \
-              -destkeystore convogram-release.jks \
-              -deststoretype JKS \
-              -deststorepass "$ANDROID_KEYSTORE_PASSWORD" \
-              -destalias "$ANDROID_KEY_ALIAS" \
-              -destkeypass "$ANDROID_KEY_PASSWORD"
-          else
-            cp convogram-source.keystore convogram-release.jks
+          # Try both configured password secrets as the private-key password.
+          for candidate_key in "$ANDROID_KEY_PASSWORD" "$ANDROID_KEYSTORE_PASSWORD"; do
+            if [ "$STORE_TYPE" = "PKCS12" ]; then
+              if keytool -importkeystore -noprompt \
+                -srckeystore convogram-source.keystore \
+                -srcstoretype PKCS12 \
+                -srcstorepass "$STORE_PASSWORD" \
+                -srcalias "$ANDROID_KEY_ALIAS" \
+                -srckeypass "$candidate_key" \
+                -destkeystore convogram-release.jks \
+                -deststoretype JKS \
+                -deststorepass "$STORE_PASSWORD" \
+                -destalias "$ANDROID_KEY_ALIAS" \
+                -destkeypass "$candidate_key" >/dev/null 2>&1; then
+                KEY_PASSWORD="$candidate_key"
+                break
+              fi
+              rm -f convogram-release.jks
+            else
+              # For a JKS source, validate the key password by exporting the key entry
+              # to a temporary PKCS12 container using the candidate password.
+              rm -f key-test.p12 convogram-release.jks
+              if keytool -importkeystore -noprompt \
+                -srckeystore convogram-source.keystore \
+                -srcstoretype JKS \
+                -srcstorepass "$STORE_PASSWORD" \
+                -srcalias "$ANDROID_KEY_ALIAS" \
+                -srckeypass "$candidate_key" \
+                -destkeystore key-test.p12 \
+                -deststoretype PKCS12 \
+                -deststorepass "$STORE_PASSWORD" \
+                -destalias "$ANDROID_KEY_ALIAS" \
+                -destkeypass "$candidate_key" >/dev/null 2>&1; then
+                cp convogram-source.keystore convogram-release.jks
+                KEY_PASSWORD="$candidate_key"
+                rm -f key-test.p12
+                break
+              fi
+              rm -f key-test.p12
+            fi
+          done
+
+          if [ -z "$KEY_PASSWORD" ]; then
+            echo "The keystore opens, but neither configured password could unlock its convogram key entry."
+            exit 1
           fi
 
           keytool -list -keystore convogram-release.jks -storetype JKS \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+            -storepass "$STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
           echo "Permanent signing key validated successfully."
 
-          cat >> app/build.gradle <<'EOF'
+          {
+            echo ''
+            echo 'android {'
+            echo '    signingConfigs {'
+            echo '        release {'
+            echo '            storeFile file("../convogram-release.jks")'
+            echo '            storePassword System.getenv("CONVOGRAM_STORE_PASSWORD")'
+            echo '            keyAlias System.getenv("CONVOGRAM_KEY_ALIAS")'
+            echo '            keyPassword System.getenv("CONVOGRAM_KEY_PASSWORD")'
+            echo '            storeType "JKS"'
+            echo '        }'
+            echo '    }'
+            echo '    buildTypes {'
+            echo '        release {'
+            echo '            signingConfig signingConfigs.release'
+            echo '        }'
+            echo '    }'
+            echo '}'
+          } >> app/build.gradle
 
-          android {
-              signingConfigs {
-                  release {
-                      storeFile file("../convogram-release.jks")
-                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
-                      storeType "JKS"
-                  }
-              }
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-              }
-          }
-          EOF
+          # Export only to this job environment; values remain masked by GitHub.
+          echo "CONVOGRAM_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "CONVOGRAM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "CONVOGRAM_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
 
       - name: Build signed release APK
         working-directory: android
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Prepare APK
