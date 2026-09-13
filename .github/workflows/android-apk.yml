@@ -45,8 +45,6 @@ jobs:
       - name: Remove default Capacitor branding
         run: |
           set -e
-          # Keep Convogram's generated splash drawable because the generated Android theme requires it.
-          # Remove Capacitor adaptive launcher/default branding only.
           rm -f android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
           rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           rm -f android/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
@@ -59,6 +57,8 @@ jobs:
             -e '/windowSplashScreenAnimatedIcon/d' \
             -e '/android:windowSplashScreenIconBackgroundColor/d' \
             -e '/postSplashScreenTheme/d'
+      - name: Finalize Convogram Android branding
+        run: node scripts/finalize-android-branding.mjs
       - name: Verify Convogram Android branding
         run: |
           set -e
@@ -67,6 +67,7 @@ jobs:
           test ! -e android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
           test ! -e android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           if grep -Rqs '@capacitor/splash-screen' android/app/src/main/res; then echo 'Default Capacitor splash resources remain'; exit 1; fi
+          if grep -Rqs 'capacitor' android/app/src/main/res; then echo 'Capacitor branding remains'; exit 1; fi
       - name: Prepare Android signing key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
