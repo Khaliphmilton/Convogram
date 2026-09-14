@@ -1,52 +1,325 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ImagePlus, MessageCircle, Plus, Search, Send, Users, X, Smile, Mic, Square, CornerUpLeft, Trash2, Play, Pause, Phone, Video, Pencil, Download } from "lucide-react";
-import EmojiPicker from "emoji-picker-react";
-import { getConversations, getConversationDetails, getMessages, sendMessage, createConversation, subscribeToConversation, markMessageAsRead, addMessageReaction, removeMessageReaction, deleteMessage, consumePendingDirectConversationId } from "../lib/messages";
+import { ChevronLeft, ImagePlus, Mic, Send, Square, Phone, Video, Smile } from "lucide-react";
+import { getConversationDetails, getMessages, sendMessage, subscribeToConversation } from "../lib/messages";
 import { uploadMessageMedia, uploadVoiceMessage } from "../lib/storage";
 import { supabase } from "../lib/supabase";
 import { VerifiedBadge } from "./VerifiedBadge";
 import "./MessagesPanel.css";
 import "./MessagesPanel.chat-fix.css";
 import "./MessagesPanel.bottom-safe-area.css";
-const REACTIONS = ["❤️", "😊", "😂", "💪", "👍"];
-function conversationTitle(c, userId) { if (!c) return "Conversation"; if (c.type === "group") return c.name || "Group conversation"; const member = c.conversation_members?.find(m => m.user_id !== userId); return member?.profiles?.display_name || member?.profiles?.username || c._direct_profile?.display_name || c._direct_profile?.username || c.name || "Direct conversation"; }
-function ConversationAvatar({ conversation, size = 38 }) { const profile = conversation?.type === "direct" ? conversation?._direct_profile : null; return <div className="conversation-avatar" style={{ width: size, height: size, flex: `0 0 ${size}px` }}>{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : conversation?.type === "group" ? <Users size={18} /> : <MessageCircle size={18} />}</div>; }
-function VoiceNote({ src }) { const ref = useRef(null); const [playing, setPlaying] = useState(false); const [duration, setDuration] = useState(0); const [current, setCurrent] = useState(0); useEffect(() => { const a = ref.current; if (!a) return; const loaded=()=>setDuration(Number.isFinite(a.duration)?a.duration:0), time=()=>setCurrent(a.currentTime||0), ended=()=>{setPlaying(false);setCurrent(0)}; a.addEventListener("loadedmetadata",loaded); a.addEventListener("timeupdate",time); a.addEventListener("ended",ended); return()=>{a.removeEventListener("loadedmetadata",loaded);a.removeEventListener("timeupdate",time);a.removeEventListener("ended",ended)}},[src]); const toggle=async()=>{const a=ref.current;if(!a)return;try{if(a.paused){await a.play();setPlaying(true)}else{a.pause();setPlaying(false)}}catch(_){}}; const format=v=>`${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,"0")}`; const pct=duration?Math.min(100,Math.max(0,current/duration*100)):0; return <div className="voice-note" onClick={e=>e.stopPropagation()}><audio ref={ref} src={src} preload="metadata"/><button type="button" className="voice-note-play" onClick={toggle}>{playing?<Pause size={15}/>:<Play size={15}/>}</button><div className="voice-note-main"><div className="voice-note-track"><span className="voice-note-progress" style={{width:`${pct}%`}}/></div><span className="voice-note-time">{format(playing?current:duration)}</span></div></div>; }
-function MediaViewer({ media, onClose }) { const [saving,setSaving]=useState(false); const [error,setError]=useState(""); const isVideo=media?.message_type==="video"; const save=async()=>{if(!media?.media_url||saving)return;try{setSaving(true);setError("");const response=await fetch(media.media_url);if(!response.ok)throw new Error("Unable to download media.");const blob=await response.blob();const mime=blob.type|| (isVideo?"video/mp4":"image/jpeg");const ext=mime.includes("mp4")?"mp4":mime.includes("webm")?"webm":mime.includes("png")?"png":mime.includes("webp")?"webp":"jpg";const name=`Convogram-${new Date(media.created_at||Date.now()).getTime()}.${ext}`;const file=new File([blob],name,{type:mime});if(navigator.share&&/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){try{await navigator.share({files:[file],title:"Save from Convogram",text:"Convogram media"});return}catch(err){if(err?.name==="AbortError")return}}const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000)}catch(e){setError(e?.message||"Could not save media.")}finally{setSaving(false)}};return <div className="convogram-media-viewer" role="dialog" aria-modal="true" onClick={onClose}><div className="convogram-media-viewer-card" onClick={e=>e.stopPropagation()}><div className="convogram-media-viewer-head"><button type="button" onClick={onClose} aria-label="Close"><X size={21}/></button><strong>{isVideo?"Video":"Photo"}</strong><button type="button" onClick={save} disabled={saving} aria-label="Save to gallery" title="Save to gallery">{saving?<span className="media-save-label">Saving…</span>:<><Download size={19}/><span className="media-save-label">Save</span></>}</button></div><div className="convogram-media-viewer-content">{isVideo?<video src={media.media_url} controls autoPlay playsInline className="convogram-media-viewer-media"/>:<img src={media.media_url} alt="Sent media" className="convogram-media-viewer-media"/>}</div>{error&&<div className="convogram-media-viewer-error">{error}</div>}</div></div> }
-export function MessagesPanel({ userId, initialConversationId = null, onBack, onChatOpen }) {
-  const [conversations,setConversations]=useState([]); const [selectedId,setSelectedId]=useState(null); const [details,setDetails]=useState(null); const [messages,setMessages]=useState([]); const [draft,setDraft]=useState(""); const [search,setSearch]=useState(""); const [loading,setLoading]=useState(true); const [chatLoading,setChatLoading]=useState(false); const [sending,setSending]=useState(false); const [uploading,setUploading]=useState(false); const [recording,setRecording]=useState(false); const [error,setError]=useState(""); const [replyingTo,setReplyingTo]=useState(null); const [reactionMessageId,setReactionMessageId]=useState(null); const [messageMenuId,setMessageMenuId]=useState(null); const [editingMessageId,setEditingMessageId]=useState(null); const [editingDraft,setEditingDraft]=useState(""); const [newChatOpen,setNewChatOpen]=useState(false); const [newMemberId,setNewMemberId]=useState(""); const [remoteOnline,setRemoteOnline]=useState(false); const [emojiOpen,setEmojiOpen]=useState(false); const [viewingMedia,setViewingMedia]=useState(null);
-  const fileRef=useRef(null), recorderRef=useRef(null), chunksRef=useRef([]), streamRef=useRef(null), messageStreamRef=useRef(null), presenceRef=useRef(null), composerRef=useRef(null), swipeRef=useRef({id:null,x:0,y:0,active:false}), longPressRef=useRef({timer:null,id:null,triggered:false});
-  const beginSwipeReply=(e,id)=>{const t=e.touches?.[0];if(t)swipeRef.current={id,x:t.clientX,y:t.clientY,active:false}};
-  const moveSwipeReply=e=>{const t=e.touches?.[0],s=swipeRef.current;if(!t||!s.id)return;const dx=t.clientX-s.x,dy=Math.abs(t.clientY-s.y);if(dx>18&&dx>dy*1.25)s.active=true;if(Math.hypot(dx,dy)>26)cancelLongPress()};
-  const endSwipeReply=(e,message)=>{const t=e.changedTouches?.[0],s=swipeRef.current;if(!t||!s.id)return;const dx=t.clientX-s.x,dy=Math.abs(t.clientY-s.y);if(dx>=70&&dx>dy*1.25){setReplyingTo(message);setReactionMessageId(null);setMessageMenuId(null)}swipeRef.current={id:null,x:0,y:0,active:false}};
-  const clearLongPress=()=>{if(longPressRef.current.timer)clearTimeout(longPressRef.current.timer);longPressRef.current={timer:null,id:null,triggered:false}};
-  const startLongPress=(message,e)=>{clearLongPress();if(message.sender_id!==userId)return;longPressRef.current.id=message.id;longPressRef.current.triggered=false;longPressRef.current.timer=setTimeout(()=>{longPressRef.current.triggered=true;setMessageMenuId(message.id);setReactionMessageId(null);e?.preventDefault?.()},650)};
-  const cancelLongPress=()=>{if(longPressRef.current.triggered)return;clearLongPress()};
-  useEffect(()=>()=>clearLongPress(),[]);
-  useEffect(()=>{if(onChatOpen)onChatOpen(Boolean(selectedId));return()=>{if(onChatOpen)onChatOpen(false)}},[selectedId,onChatOpen]);
-  const loadConversations=async()=>{if(!userId)return;try{setLoading(true);setError("");const data=await getConversations(userId);const enriched=await Promise.all((data||[]).map(async c=>{let latest=null;try{const{data:row}=await supabase.from("messages").select("content,message_type,created_at,is_deleted").eq("conversation_id",c.id).order("created_at",{ascending:false}).limit(1).maybeSingle();latest=row||null}catch(_){}return{...c,_latest_message:latest}}));setConversations(enriched);const pending=initialConversationId||consumePendingDirectConversationId();if(pending)setSelectedId(pending)}catch(e){setError(e?.message||"Unable to load conversations")}finally{setLoading(false)}};
-  useEffect(()=>{loadConversations()},[userId,initialConversationId]); useEffect(()=>{if(!userId)return;const t=setInterval(()=>loadConversations().catch(()=>{}),5000);return()=>clearInterval(t)},[userId]);
-  useEffect(()=>{if(!selectedId){setDetails(null);setMessages([]);return}let cancelled=false;(async()=>{try{setChatLoading(true);setError("");const conversation=await getConversationDetails(selectedId);if(!conversation)throw new Error("Conversation could not be found.");if(cancelled)return;setDetails(conversation);try{const data=await getMessages(selectedId,100,userId);if(!cancelled)setMessages(Array.isArray(data)?data:[])}catch(e){if(!cancelled)setError(e?.message||"Messages could not be loaded")} }catch(e){if(!cancelled){setError(e?.message||"Unable to open conversation.");setSelectedId(null)}}finally{if(!cancelled)setChatLoading(false)}})();return()=>{cancelled=true}},[selectedId,userId]);
-  useEffect(()=>{if(!selectedId)return;return subscribeToConversation(selectedId,async incoming=>{let enriched=incoming;if(incoming.reply_to_id){try{const { data: reply }=await supabase.from("messages").select(`id, content, message_type, media_url, is_deleted, sender_id, created_at, profiles:sender_id(id, username, display_name, avatar_url)`).eq("id",incoming.reply_to_id).maybeSingle();enriched={...incoming,reply_to:reply||null}}catch(_){}}setMessages(prev=>prev.some(m=>m.id===enriched.id)?prev:[...prev,enriched].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)));setConversations(prev=>prev.map(c=>c.id===selectedId?{...c,_latest_message:enriched,updated_at:enriched.created_at,last_message_at:enriched.created_at,unread_count:0}:c));if(enriched.sender_id!==userId)markMessageAsRead(enriched.id,userId).catch(()=>{})},updated=>setMessages(prev=>prev.map(m=>m.id===updated.id?{...m,...updated}:m)) )},[selectedId,userId]);
-  useEffect(()=>{if(!messageStreamRef.current||!selectedId)return;requestAnimationFrame(()=>{const el=messageStreamRef.current;if(el)el.scrollTop=el.scrollHeight})},[messages.length,selectedId,chatLoading]);
-  useEffect(()=>{if(!selectedId||!userId)return;const channel=supabase.channel(`convogram-presence-${selectedId}`,{config:{presence:{key:userId}}});presenceRef.current=channel;const sync=()=>{const users=Object.values(channel.presenceState()).flat();setRemoteOnline(users.some(u=>u.userId&&u.userId!==userId&&u.online!==false))};channel.on("presence",{event:"sync"},sync).on("presence",{event:"join"},sync).on("presence",{event:"leave"},sync).subscribe(async status=>{if(status==="SUBSCRIBED"){await channel.track({userId,online:true});sync()}});return()=>{channel.untrack().catch(()=>{});supabase.removeChannel(channel);presenceRef.current=null;setRemoteOnline(false)}},[selectedId,userId]);
-  const filtered=useMemo(()=>{const q=search.trim().toLowerCase();if(!q)return conversations;return conversations.filter(c=>`${conversationTitle(c,userId)} ${c.type||""}`.toLowerCase().includes(q))},[conversations,search,userId]); const sorted=useMemo(()=>[...filtered].sort((a,b)=>new Date(b?._latest_message?.created_at||b?.updated_at||0)-new Date(a?._latest_message?.created_at||a?.updated_at||0)),[filtered]); const displayPreview=c=>{const m=c?._latest_message;if(!m)return c.type==="group"?"Group":"Private chat";if(m.is_deleted)return"Message deleted";if(m.message_type==="image")return"Photo";if(m.message_type==="video")return"Video";if(m.message_type==="audio")return"Voice message";return m.content||"Attachment"};
-  const handleSend=async e=>{e.preventDefault();const text=draft.trim();if(!text||!selectedId||!userId||sending)return;try{setSending(true);const sent=await sendMessage(selectedId,userId,text,"text",null,replyingTo?.id||null);setMessages(prev=>prev.some(m=>m.id===sent.id)?prev:[...prev,sent]);setDraft("");setReplyingTo(null);setEmojiOpen(false)}catch(e){setError(e?.message||"Could not send message.")}finally{setSending(false)}};
-  const handleEmojiClick=emojiData=>{setDraft(prev=>prev+emojiData.emoji);requestAnimationFrame(()=>composerRef.current?.focus())};
-  const handleMedia=async e=>{const file=e.target.files?.[0];if(!file||!selectedId||!userId)return;try{setUploading(true);const uploaded=await uploadMessageMedia(file,userId);const sent=await sendMessage(selectedId,userId,null,uploaded.mediaType,uploaded.url,replyingTo?.id||null);setMessages(prev=>[...prev,sent]);setReplyingTo(null)}catch(e){setError(e?.message||"Could not upload media.")}finally{setUploading(false);if(fileRef.current)fileRef.current.value=""}};
-  const startRecording=async()=>{if(!navigator.mediaDevices?.getUserMedia){setError("Microphone is not available on this device.");return}try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;const recorder=new MediaRecorder(stream);chunksRef.current=[];recorder.ondataavailable=e=>{if(e.data?.size)chunksRef.current.push(e.data)};recorder.onstop=async()=>{try{const blob=new Blob(chunksRef.current,{type:recorder.mimeType||"audio/webm"});const file=new File([blob],`voice-${Date.now()}.webm`,{type:blob.type||"audio/webm"});const uploaded=await uploadVoiceMessage(file,userId);const sent=await sendMessage(selectedId,userId,null,"audio",uploaded.url,replyingTo?.id||null);setMessages(prev=>[...prev,sent])}catch(e){setError(e?.message||"Could not send voice note.")}finally{stream.getTracks().forEach(t=>t.stop());setRecording(false)}};recorderRef.current=recorder;recorder.start();setRecording(true)}catch(e){setError(e?.message||"Microphone permission is required.")}}; const stopRecording=()=>{if(recorderRef.current&&recorderRef.current.state!=="inactive")recorderRef.current.stop();else setRecording(false)};
-  const toggleReaction=async(message,reaction)=>{if(!userId)return;const mine=(message.message_reactions||[]).find(r=>r.user_id===userId&&r.reaction===reaction);try{if(mine)await removeMessageReaction(message.id,userId,reaction);else await addMessageReaction(message.id,userId,reaction);const data=await getMessages(selectedId,100,userId);setMessages(data||[])}catch(e){setError(e?.message||"Could not update reaction")}finally{setReactionMessageId(null);setMessageMenuId(null)}};
-  const handleDelete=async message=>{if(message.sender_id!==userId)return;try{const updated=await deleteMessage(message.id);setMessages(prev=>prev.map(m=>m.id===updated.id?{...m,...updated}:m))}catch(e){setError(e?.message||"Could not delete message")} };
-  const handleBack=()=>{setSelectedId(null);setDetails(null);setMessages([]);setReplyingTo(null);setMessageMenuId(null);setReactionMessageId(null);setEmojiOpen(false);if(onBack)onBack()};
-  useEffect(()=>{if(selectedId)window.__convogramChatOpen=true;else window.__convogramChatOpen=false;return()=>{window.__convogramChatOpen=false}},[selectedId]);
-  return <div className={`messages-panel ${selectedId ? "chat-open" : ""}`}>
-    {!selectedId ? <div className="conversation-list">...</div> : <div className="chat-window">
-      <div className="chat-head">...</div>
-      <div className="message-stream" ref={messageStreamRef}>...</div>
-      {replyingTo && <div className="reply-banner">...</div>}
-      {emojiOpen && <div className="convogram-emoji-panel"><EmojiPicker onEmojiClick={handleEmojiClick}/></div>}
-      <form className="message-composer" onSubmit={handleSend}>...</form>
-    </div>}
-  </div>;
+
+function formatTime(value) {
+  try {
+    return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
 }
+
+function profileName(profile) {
+  return profile?.display_name || profile?.username || "Convogram user";
+}
+
+function MessageBody({ message }) {
+  if (message.is_deleted) {
+    return <em className="convogram-chat-deleted">Message deleted</em>;
+  }
+  if (message.message_type === "image" && message.media_url) {
+    return <img className="convogram-chat-image" src={message.media_url} alt="Sent photo" loading="lazy" />;
+  }
+  if (message.message_type === "video" && message.media_url) {
+    return <video className="convogram-chat-video" src={message.media_url} controls playsInline preload="metadata" />;
+  }
+  if (message.message_type === "audio" && message.media_url) {
+    return <audio className="convogram-chat-audio" src={message.media_url} controls preload="metadata" />;
+  }
+  return <span>{message.content || "Attachment"}</span>;
+}
+
+export function MessagesPanel({ userId, initialConversationId = null, onBack, onChatOpen }) {
+  const [conversation, setConversation] = useState(null);
+  const [peer, setPeer] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [error, setError] = useState("");
+  const [typingNotice] = useState("");
+  const streamRef = useRef(null);
+  const composerRef = useRef(null);
+  const fileRef = useRef(null);
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  useEffect(() => {
+    onChatOpen?.(true);
+    return () => onChatOpen?.(false);
+  }, [onChatOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!initialConversationId || !userId) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setError("");
+      try {
+        const details = await getConversationDetails(initialConversationId);
+        if (cancelled) return;
+        setConversation(details);
+
+        const { data: members, error: memberError } = await supabase
+          .from("conversation_members")
+          .select("user_id")
+          .eq("conversation_id", initialConversationId);
+        if (memberError) throw memberError;
+        const peerId = (members || []).map((m) => m.user_id).find((id) => id && id !== userId);
+        if (peerId) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id,username,display_name,avatar_url,is_verified")
+            .eq("id", peerId)
+            .maybeSingle();
+          if (!cancelled) setPeer(profile || null);
+        }
+
+        const data = await getMessages(initialConversationId, 100, userId);
+        if (!cancelled) setMessages(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e?.message || "Unable to load this conversation.");
+          setMessages([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialConversationId, userId]);
+
+  useEffect(() => {
+    if (!initialConversationId) return undefined;
+    return subscribeToConversation(
+      initialConversationId,
+      (incoming) => {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === incoming.id)) return prev;
+          return [...prev, incoming].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        });
+      },
+      (updated) => {
+        setMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
+      },
+    );
+  }, [initialConversationId]);
+
+  useEffect(() => {
+    const el = streamRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [messages.length, loading]);
+
+  const title = useMemo(() => {
+    if (conversation?.type === "group") return conversation.name || "Group conversation";
+    return profileName(peer);
+  }, [conversation, peer]);
+
+  const sendText = async (event) => {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text || !initialConversationId || !userId || sending) return;
+    try {
+      setSending(true);
+      setError("");
+      const sent = await sendMessage(initialConversationId, userId, text, "text");
+      setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, { ...sent, profiles: { id: userId } }]));
+      setDraft("");
+      requestAnimationFrame(() => composerRef.current?.focus());
+    } catch (e) {
+      setError(e?.message || "Could not send message.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const chooseMedia = () => fileRef.current?.click();
+
+  const handleMedia = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !initialConversationId || !userId || uploading) return;
+    try {
+      setUploading(true);
+      setError("");
+      const uploaded = await uploadMessageMedia(file, userId);
+      const sent = await sendMessage(initialConversationId, userId, null, uploaded.mediaType, uploaded.url);
+      setMessages((prev) => [...prev, sent]);
+    } catch (e) {
+      setError(e?.message || "Could not send media.");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const startRecording = async () => {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setError("Voice messages are not available on this device.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data?.size) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        try {
+          setUploading(true);
+          const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+          const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
+          const uploaded = await uploadVoiceMessage(file, userId);
+          const sent = await sendMessage(initialConversationId, userId, null, "audio", uploaded.url);
+          setMessages((prev) => [...prev, sent]);
+        } catch (e) {
+          setError(e?.message || "Could not send voice message.");
+        } finally {
+          stream.getTracks().forEach((track) => track.stop());
+          setUploading(false);
+          setRecording(false);
+        }
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+    } catch (e) {
+      setError(e?.message || "Microphone permission is required.");
+    }
+  };
+
+  return (
+    <div className="messages-panel chat-open convogram-stable-chat">
+      <style>{`
+        .convogram-stable-chat{position:fixed;inset:0;background:#080808;color:#fff;z-index:50;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+        .convogram-stable-chat-head{height:62px;min-height:62px;background:#0b0b0b;border-bottom:1px solid #202020;display:flex;align-items:center;gap:10px;padding:0 12px}
+        .convogram-stable-chat-back{width:40px;height:40px;border:0;background:transparent;color:#fff;display:grid;place-items:center;border-radius:50%}
+        .convogram-stable-chat-avatar{width:38px;height:38px;border-radius:50%;overflow:hidden;background:#181818;border:1px solid #292929;display:grid;place-items:center;flex:0 0 auto}
+        .convogram-stable-chat-avatar img{width:100%;height:100%;object-fit:cover}
+        .convogram-stable-chat-title{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+        .convogram-stable-chat-name{display:flex;align-items:center;gap:3px;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .convogram-stable-chat-status{font-size:11px;color:#777}
+        .convogram-stable-chat-actions{display:flex;gap:2px}
+        .convogram-stable-chat-action{width:38px;height:38px;border:0;background:transparent;color:#ddd;display:grid;place-items:center;border-radius:50%}
+        .convogram-stable-chat-body{min-height:0;flex:1;display:flex;flex-direction:column;background:#0a0a0a}
+        .convogram-stable-chat-stream{flex:1;min-height:0;overflow-y:auto;padding:14px 12px 18px;display:flex;flex-direction:column;gap:8px;overscroll-behavior:contain}
+        .convogram-chat-state{margin:auto;max-width:320px;text-align:center;color:#777;display:flex;flex-direction:column;gap:7px;align-items:center}
+        .convogram-chat-state strong{color:#eee;font-size:14px}
+        .convogram-chat-state span{font-size:12px}
+        .convogram-chat-error{margin:8px 12px;padding:9px 11px;border-radius:10px;background:#2a1515;color:#ffb2b2;font-size:12px;border:1px solid #4a2222}
+        .convogram-chat-row{display:flex;width:100%}
+        .convogram-chat-row.mine{justify-content:flex-end}
+        .convogram-chat-bubble{max-width:min(78%,420px);padding:9px 11px;border-radius:16px;background:#181818;border:1px solid #272727;box-sizing:border-box}
+        .convogram-chat-row.mine .convogram-chat-bubble{background:#145c8c;border-color:#1879b7}
+        .convogram-chat-content{font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+        .convogram-chat-meta{margin-top:4px;font-size:9px;opacity:.65;text-align:right}
+        .convogram-chat-image{max-width:100%;max-height:280px;border-radius:12px;display:block}
+        .convogram-chat-video{max-width:100%;max-height:280px;border-radius:12px;display:block}
+        .convogram-chat-audio{width:min(240px,100%)}
+        .convogram-chat-deleted{opacity:.65}
+        .convogram-stable-composer-wrap{padding:8px 10px 8px;background:#0b0b0b;border-top:1px solid #202020}
+        .convogram-stable-composer{display:flex;align-items:flex-end;gap:7px;background:#151515;border:1px solid #292929;border-radius:22px;padding:5px}
+        .convogram-stable-icon{width:38px;height:38px;border:0;background:transparent;color:#bbb;display:grid;place-items:center;border-radius:50%;flex:0 0 auto}
+        .convogram-stable-input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#fff;resize:none;font:inherit;font-size:14px;padding:9px 4px;max-height:110px}
+        .convogram-stable-send{width:38px;height:38px;border:0;border-radius:50%;background:#20a4f3;color:#fff;display:grid;place-items:center;flex:0 0 auto}
+        @media(max-width:600px){.convogram-stable-chat-bubble{max-width:82%}}
+      `}</style>
+
+      <header className="convogram-stable-chat-head">
+        <button type="button" className="convogram-stable-chat-back" aria-label="Back" onClick={onBack}>
+          <ChevronLeft size={23} />
+        </button>
+        <div className="convogram-stable-chat-avatar">
+          {peer?.avatar_url ? <img src={peer.avatar_url} alt="" /> : <span>●</span>}
+        </div>
+        <div className="convogram-stable-chat-title">
+          <div className="convogram-stable-chat-name">
+            {title}
+            <VerifiedBadge verified={peer?.is_verified} size={16} />
+          </div>
+          <span className="convogram-stable-chat-status">{conversation?.type === "group" ? "Group chat" : "Messages"}</span>
+        </div>
+        <div className="convogram-stable-chat-actions">
+          <button type="button" className="convogram-stable-chat-action" aria-label="Voice call"><Phone size={18} /></button>
+          <button type="button" className="convogram-stable-chat-action" aria-label="Video call"><Video size={18} /></button>
+        </div>
+      </header>
+
+      <div className="convogram-stable-chat-body">
+        <div className="convogram-stable-chat-stream" ref={streamRef}>
+          {loading ? (
+            <div className="convogram-chat-state"><strong>Loading messages…</strong><span>Please wait</span></div>
+          ) : messages.length === 0 ? (
+            <div className="convogram-chat-state"><strong>No messages yet</strong><span>Send a message to start the conversation.</span></div>
+          ) : (
+            messages.map((message) => {
+              const mine = message.sender_id === userId;
+              return (
+                <div className={`convogram-chat-row ${mine ? "mine" : ""}`} key={message.id}>
+                  <div className="convogram-chat-bubble">
+                    {!mine && peer && message.profiles?.display_name && message.profiles.display_name !== peer.display_name && (
+                      <div style={{ fontSize: 10, opacity: 0.65, marginBottom: 3 }}>{message.profiles.display_name}</div>
+                    )}
+                    <div className="convogram-chat-content"><MessageBody message={message} /></div>
+                    <div className="convogram-chat-meta">{formatTime(message.created_at)}</div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {error && <div className="convogram-chat-error">{error}</div>}
+        {typingNotice && <div style={{ padding: "0 14px 6px", color: "#777", fontSize: 11 }}>{typingNotice}</div>}
+
+        <div className="convogram-stable-composer-wrap">
+          <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={handleMedia} />
+          <form className="convogram-stable-composer" onSubmit={sendText}>
+            <button type="button" className="convogram-stable-icon" aria-label="Add media" onClick={chooseMedia} disabled={uploading}><ImagePlus size={20} /></button>
+            <textarea
+              ref={composerRef}
+              className="convogram-stable-input"
+              rows={1}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Message"
+              aria-label="Message"
+            />
+            <button type="button" className="convogram-stable-icon" aria-label="Emoji"><Smile size={19} /></button>
+            {draft.trim() ? (
+              <button type="submit" className="convogram-stable-send" aria-label="Send" disabled={sending}><Send size={18} /></button>
+            ) : (
+              <button type="button" className="convogram-stable-icon" aria-label={recording ? "Stop recording" : "Record voice message"} onClick={startRecording} disabled={uploading}>
+                {recording ? <Square size={18} /> : <Mic size={19} />}
+              </button>
+            )}
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default MessagesPanel;
