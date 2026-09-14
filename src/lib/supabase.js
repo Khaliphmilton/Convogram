@@ -3,15 +3,11 @@ import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
-// Build-time environment variables are preferred for deployments.
-// The publishable key is safe for browser use; never put a service-role/secret key here.
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://cckobknolduqnsimwvdu.supabase.co";
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_dnyPhxVf2nVqHE1UOR96Fg_HpqE4M32";
 
 if (!supabaseUrl || !supabaseKey) {
-  throw new Error(
-    "Missing Supabase configuration. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY."
-  );
+  throw new Error("Missing Supabase configuration. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.");
 }
 
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -31,19 +27,14 @@ const timedFetch = (input, init = {}) => {
 };
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   global: { fetch: timedFetch },
 });
 
-// Android push registration. This runs only in the native Android build; web builds
-// keep using the normal browser notification behavior and never touch FCM APIs.
 let pushListenersInstalled = false;
 let pushUserId = null;
 let pushNotificationId = 10000;
+let messagePushChannel = null;
 
 async function saveAndroidPushToken(userId, token) {
   if (!userId || !token) return;
@@ -60,16 +51,70 @@ async function saveAndroidPushToken(userId, token) {
     if (error) throw error;
     return;
   }
-  // Remove older Android registrations for this user only after the new token is
-  // known. This prevents stale tokens from accumulating on reinstall/update.
   await supabase.from("notification_devices").delete().eq("user_id", userId).eq("platform", "android").neq("endpoint", token);
   const { error } = await supabase.from("notification_devices").insert({ user_id: userId, platform: "android", endpoint: token });
   if (error) throw error;
 }
 
+async function notifyRecipientsForMessage(message) {
+  if (!message?.id || !message?.conversation_id || !pushUserId || message.sender_id !== pushUserId) return;
+  try {
+    const { data: members, error } = await supabase
+      .from("conversation_members")
+      .select("user_id")
+      .eq("conversation_id", message.conversation_id)
+      .neq("user_id", pushUserId);
+    if (error) throw error;
+    if (!members?.length) return;
+
+    const { data: sender } = await supabase
+      .from("profiles")
+      .select("display_name, username")
+      .eq("id", pushUserId)
+      .maybeSingle();
+    const senderName = sender?.display_name || sender?.username || "Someone";
+    const body = message.message_type === "image" ? "Sent you a photo" : message.message_type === "video" ? "Sent you a video" : message.message_type === "audio" ? "Sent you a voice message" : (message.content || "Sent you a message");
+    const title = `${senderName} on Convogram`;
+
+    await Promise.all((members || []).map(async ({ user_id: toUserId }) => {
+      try {
+        await supabase.functions.invoke("push-android", {
+          body: {
+            toUserId,
+            title,
+            body: body.slice(0, 240),
+            data: {
+              type: "message",
+              messageId: message.id,
+              conversationId: message.conversation_id,
+              senderId: pushUserId,
+            },
+          },
+        });
+      } catch (error) {
+        console.warn("Convogram message push failed", error);
+      }
+    }));
+  } catch (error) {
+    console.warn("Convogram message notification bridge failed", error);
+  }
+}
+
+function installMessagePushBridge(userId) {
+  if (!userId || messagePushChannel) return;
+  messagePushChannel = supabase
+    .channel(`convogram-push-${userId}`)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `sender_id=eq.${userId}` }, ({ new: message }) => {
+      notifyRecipientsForMessage(message);
+    })
+    .subscribe();
+}
+
 async function initializeAndroidPush(userId) {
-  if (!userId || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
+  if (!userId) return;
   pushUserId = userId;
+  installMessagePushBridge(userId);
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
   try {
     if (!pushListenersInstalled) {
       pushListenersInstalled = true;
@@ -79,8 +124,6 @@ async function initializeAndroidPush(userId) {
       });
       await PushNotifications.addListener("registrationError", (error) => console.warn("Convogram FCM registration failed", error));
       await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
-        // FCM notification payloads are displayed by Android while the app is in
-        // the background. For foreground delivery, mirror it as a local notification.
         try {
           const permission = await LocalNotifications.checkPermissions();
           if (permission.display !== "granted") return;
@@ -104,31 +147,13 @@ async function initializeAndroidPush(userId) {
     if (permission.receive !== "granted") return;
 
     try {
-      await PushNotifications.createChannel({
-        id: "convogram_notifications",
-        name: "Convogram notifications",
-        description: "Messages, calls and other Convogram alerts",
-        importance: 5,
-        visibility: 1,
-        sound: "default",
-        vibration: true,
-      });
+      await PushNotifications.createChannel({ id: "convogram_notifications", name: "Convogram notifications", description: "Messages, calls and other Convogram alerts", importance: 5, visibility: 1, sound: "default", vibration: true });
     } catch (_) {}
 
     try {
       let localPermission = await LocalNotifications.checkPermissions();
       if (localPermission.display !== "granted") localPermission = await LocalNotifications.requestPermissions();
-      if (localPermission.display === "granted") {
-        await LocalNotifications.createChannel({
-          id: "convogram_notifications",
-          name: "Convogram notifications",
-          description: "Messages, calls and other Convogram alerts",
-          importance: 5,
-          visibility: 1,
-          sound: "default",
-          vibration: true,
-        });
-      }
+      if (localPermission.display === "granted") await LocalNotifications.createChannel({ id: "convogram_notifications", name: "Convogram notifications", description: "Messages, calls and other Convogram alerts", importance: 5, visibility: 1, sound: "default", vibration: true });
     } catch (_) {}
 
     await PushNotifications.register();
@@ -144,52 +169,22 @@ if (typeof window !== "undefined" && !window.__convogramPushAuthListener) {
   }).catch(() => {});
   supabase.auth.onAuthStateChange((_event, session) => {
     pushUserId = session?.user?.id || null;
+    if (messagePushChannel) {
+      supabase.removeChannel(messagePushChannel);
+      messagePushChannel = null;
+    }
     if (session?.user?.id) initializeAndroidPush(session.user.id);
   });
 }
 
-// Safety override for the mobile chat view. The previous full-viewport fixed
-// layer could cover the application with a black surface while a conversation
-// was still loading. Keep the chat inside the app content so loading/errors
-// remain visible and the rest of Convogram cannot be accidentally obscured.
 if (typeof document !== "undefined" && !document.getElementById("convogram-chat-layout-fix")) {
   const style = document.createElement("style");
   style.id = "convogram-chat-layout-fix";
   style.textContent = `
-    .messages-panel.chat-open {
-      position: relative !important;
-      inset: auto !important;
-      width: 100% !important;
-      height: min(720px, calc(100vh - 132px)) !important;
-      min-height: 0 !important;
-      z-index: 1 !important;
-      display: grid !important;
-      background: #080808 !important;
-      border-radius: 16px !important;
-    }
-    .messages-panel.chat-open .chat-window {
-      width: 100% !important;
-      height: 100% !important;
-      min-height: 0 !important;
-      display: flex !important;
-    }
-    .messages-panel.chat-open .chat-loading {
-      flex: 1 !important;
-      min-height: 220px !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      color: #aaa !important;
-      font-size: 13px !important;
-      background: #080808 !important;
-    }
-    @media (max-width: 760px) {
-      .messages-panel.chat-open {
-        height: calc(100vh - 90px) !important;
-        min-height: 0 !important;
-        border-radius: 10px !important;
-      }
-    }
+    .messages-panel.chat-open { position: relative !important; inset: auto !important; width: 100% !important; height: min(720px, calc(100vh - 132px)) !important; min-height: 0 !important; z-index: 1 !important; display: grid !important; background: #080808 !important; border-radius: 16px !important; }
+    .messages-panel.chat-open .chat-window { width: 100% !important; height: 100% !important; min-height: 0 !important; display: flex !important; }
+    .messages-panel.chat-open .chat-loading { flex: 1 !important; min-height: 220px !important; display: flex !important; align-items: center !important; justify-content: center !important; color: #aaa !important; font-size: 13px !important; background: #080808 !important; }
+    @media (max-width: 760px) { .messages-panel.chat-open { height: calc(100vh - 90px) !important; min-height: 0 !important; border-radius: 10px !important; } }
   `;
   document.head.appendChild(style);
 }
