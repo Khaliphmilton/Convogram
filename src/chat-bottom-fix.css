@@ -1,29 +1,27 @@
-/* Chat viewport: when the bottom navigation is hidden, do not reserve its old space. */
+/* Chat is rendered inside the native Android-safe WebView viewport.
+   Do not reserve guessed status/navigation-bar pixels here. */
 @media (max-width: 820px) {
   body:has(.messages-panel.chat-open) .messages-panel.chat-open,
   body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window {
     bottom: 0 !important;
-    height: 100dvh !important;
+    height: 100% !important;
     min-height: 0 !important;
     max-height: none !important;
   }
 
   body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window .message-stream {
-    /* Keep the last message clear of the composer and Android navigation area. */
-    padding-bottom: calc(58px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+    padding-bottom: 18px !important;
   }
 
   body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window .message-composer {
-    /* The chat composer must sit above Android's bottom navigation/gesture area. */
-    bottom: max(env(safe-area-inset-bottom, 0px), 24px) !important;
+    position: relative !important;
+    bottom: auto !important;
     margin-bottom: 0 !important;
+    flex: 0 0 auto !important;
   }
 
-  /* Stable chat layout: reserve the Android system navigation area inside
-     the chat only. This keeps the header/content unchanged while lifting
-     the entire bottom boundary clear of Android's navigation controls. */
   .convogram-stable-chat {
-    padding-bottom: max(env(safe-area-inset-bottom, 0px), 56px) !important;
+    padding-bottom: 0 !important;
     box-sizing: border-box !important;
   }
 
