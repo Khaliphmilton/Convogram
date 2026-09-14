@@ -18,4 +18,16 @@
     bottom: max(env(safe-area-inset-bottom, 0px), 24px) !important;
     margin-bottom: 0 !important;
   }
+
+  /* Stable chat layout: reserve the Android system navigation area inside
+     the chat only. This keeps the header/content unchanged while lifting
+     the entire bottom boundary clear of Android's navigation controls. */
+  .convogram-stable-chat {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 56px) !important;
+    box-sizing: border-box !important;
+  }
+
+  .convogram-stable-chat > .convogram-stable-chat-body {
+    min-height: 0 !important;
+  }
 }
