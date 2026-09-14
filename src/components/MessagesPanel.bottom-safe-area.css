@@ -109,3 +109,47 @@
     bottom: calc(58px + max(env(safe-area-inset-bottom, 0px), 24px) + 11px) !important;
   }
 }
+
+/* Android top system-bar boundary — mirrors the lower navigation bar.
+   The header background extends behind the status-bar area, but the header
+   controls themselves are padded below the Android status icons. */
+@media (max-width: 820px) {
+  .app > .topbar {
+    top: 0 !important;
+    height: calc(64px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    min-height: calc(64px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    padding-top: max(env(safe-area-inset-top, 0px), 24px) !important;
+    box-sizing: border-box !important;
+    background: rgba(0,0,0,.94) !important;
+  }
+
+  .content {
+    padding-bottom: calc(80px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+  }
+
+  .mobile-nav {
+    bottom: 0 !important;
+    padding-bottom: calc(6px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+  }
+
+  /* Chat header follows the same top boundary when chat is open. */
+  .messages-panel.chat-open > .chat-window .chat-head {
+    height: calc(66px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    min-height: calc(66px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    max-height: calc(66px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    padding-top: max(env(safe-area-inset-top, 0px), 24px) !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .app > .topbar {
+    height: calc(56px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    min-height: calc(56px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    padding-top: max(env(safe-area-inset-top, 0px), 24px) !important;
+  }
+
+  .content {
+    padding-bottom: calc(82px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+  }
+}
