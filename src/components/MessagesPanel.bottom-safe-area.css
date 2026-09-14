@@ -71,3 +71,41 @@
   flex: 0 0 auto;
   height: auto;
 }
+
+/* Chat viewport boundaries: use the same top/header position as Convogram's app header,
+   and stop the chat exactly where the app's mobile bottom navigation begins. */
+@media (max-width: 760px) {
+  body:has(.messages-panel.chat-open) .mobile-nav,
+  body:has(.messages-panel.chat-open) .app > .mobile-nav {
+    display: grid !important;
+    z-index: 60 !important;
+  }
+
+  .messages-panel.chat-open {
+    top: 0 !important;
+    bottom: calc(44px + env(safe-area-inset-bottom, 0px)) !important;
+    height: auto !important;
+    max-height: none !important;
+    z-index: 55 !important;
+  }
+
+  .messages-panel.chat-open > .chat-window {
+    height: 100% !important;
+    max-height: 100% !important;
+  }
+
+  /* The chat composer now measures from the chat viewport boundary, not the
+     Android system-navigation boundary. Keep the requested ~3 mm lift. */
+  .messages-panel.chat-open > .chat-window .message-composer {
+    bottom: 11px !important;
+  }
+
+  .messages-panel.chat-open > .chat-window .message-stream {
+    padding-bottom: 87px !important;
+  }
+
+  .messages-panel.chat-open > .chat-window .reply-banner,
+  .messages-panel.chat-open > .chat-window .convogram-emoji-panel {
+    bottom: 69px !important;
+  }
+}
