@@ -65,20 +65,22 @@ if (!manifest.includes('android:theme="@style/ConvogramLaunchTheme"')) {
 }
 fs.writeFileSync(manifestPath, manifest);
 
-// Configure the native Android window as the single source of truth for system-bar insets.
+// Android is the single source of truth for system-bar geometry. The actual
+// status/navigation/gesture insets are read from WindowInsets at runtime.
 const mainActivityPath = path.resolve('android/app/src/main/java/com/convogram/app/MainActivity.java');
 if (fs.existsSync(mainActivityPath)) {
   let activity = fs.readFileSync(mainActivityPath, 'utf8');
-
   const packageLine = 'package com.convogram.app;';
-  if (!activity.includes('import android.os.Build;')) {
-    activity = activity.replace(packageLine, `${packageLine}\n\nimport android.os.Build;`);
-  }
-  if (!activity.includes('import android.view.Window;')) {
-    activity = activity.replace(packageLine, `${packageLine}\n\nimport android.view.Window;`);
-  }
-  if (!activity.includes('import androidx.core.view.WindowCompat;')) {
-    activity = activity.replace(packageLine, `${packageLine}\n\nimport androidx.core.view.WindowCompat;`);
+  const imports = [
+    'import android.os.Build;',
+    'import android.view.View;',
+    'import android.view.Window;',
+    'import androidx.core.view.ViewCompat;',
+    'import androidx.core.view.WindowCompat;',
+    'import androidx.core.view.WindowInsetsCompat;'
+  ];
+  for (const imp of imports) {
+    if (!activity.includes(imp)) activity = activity.replace(packageLine, `${packageLine}\n\n${imp}`);
   }
 
   if (!activity.includes('configureConvogramSystemBars')) {
@@ -86,7 +88,11 @@ if (fs.existsSync(mainActivityPath)) {
     const method = `
     private void configureConvogramSystemBars() {
         Window window = getWindow();
-        WindowCompat.setDecorFitsSystemWindows(window, true);
+        if (Build.VERSION.SDK_INT < 35) {
+            WindowCompat.setDecorFitsSystemWindows(window, true);
+        } else {
+            WindowCompat.setDecorFitsSystemWindows(window, false);
+        }
         window.setStatusBarColor(android.graphics.Color.rgb(7, 20, 38));
         window.setNavigationBarColor(android.graphics.Color.rgb(7, 20, 38));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -97,6 +103,21 @@ if (fs.existsSync(mainActivityPath)) {
             window.setNavigationBarContrastEnforced(false);
         }
         window.getDecorView().setSystemUiVisibility(0);
+    }
+
+    private void configureConvogramWebViewInsets() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        View webView = getBridge().getWebView();
+        ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
+            WindowInsetsCompat.Insets bars = insets.getInsets(
+                WindowInsetsCompat.Type.statusBars()
+                    | WindowInsetsCompat.Type.navigationBars()
+                    | WindowInsetsCompat.Type.displayCutout()
+            );
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(webView);
     }
 `;
     if (!activity.includes(marker)) throw new Error('MainActivity class marker not found.');
@@ -117,7 +138,15 @@ if (fs.existsSync(mainActivityPath)) {
     public void onCreate(Bundle savedInstanceState) {
         configureConvogramSystemBars();
         super.onCreate(savedInstanceState);
+        configureConvogramWebViewInsets();
     }`
+      );
+    }
+  } else if (!activity.includes('configureConvogramWebViewInsets();')) {
+    if (activity.includes('super.onCreate(savedInstanceState);')) {
+      activity = activity.replace(
+        'super.onCreate(savedInstanceState);',
+        'super.onCreate(savedInstanceState);\n        configureConvogramWebViewInsets();'
       );
     }
   }
@@ -135,4 +164,4 @@ if (/versionName\s+"[^"]*"/.test(gradle)) gradle = gradle.replace(/versionName\s
 fs.writeFileSync(gradlePath, gradle);
 
 if (manifest.match(/capacitor_splash|splash_screen/i)) throw new Error('Capacitor splash references remain in AndroidManifest.xml');
-console.log(`Android branding finalized: Convogram launcher, clean native launch window, original in-app splash, version ${versionName} (${versionCode}).`);
+console.log(`Android branding finalized: Convogram launcher, clean native launch window, runtime WindowInsets system-bar handling, version ${versionName} (${versionCode}).`);
