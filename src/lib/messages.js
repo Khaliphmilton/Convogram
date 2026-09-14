@@ -12,26 +12,45 @@ export async function getConversations(userId, limit = 50) {
   const rows = memberships || [];
   const ids = rows.map(r => r.conversation_id).filter(Boolean);
   if (!ids.length) return [];
+
   const { data: conversationRows, error: conversationError } = await supabase.from("conversations").select("*").in("id", ids);
   if (conversationError) throw conversationError;
   const conversationById = new Map((conversationRows || []).map(c => [c.id, c]));
-  const { data: memberRows, error: memberError } = await supabase.from("conversation_members").select("conversation_id,user_id").in("conversation_id", ids);
-  if (memberError) throw memberError;
-  const otherIds = [...new Set((memberRows || []).map(m => m.user_id).filter(id => id && id !== userId))];
+
+  let memberRows = [];
+  try {
+    const result = await supabase.from("conversation_members").select("conversation_id,user_id").in("conversation_id", ids);
+    if (!result.error) memberRows = result.data || [];
+  } catch (_) {}
+
+  const otherIds = [...new Set(memberRows.map(m => m.user_id).filter(id => id && id !== userId))];
   let profiles = [];
-  if (otherIds.length) { const result = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").in("id", otherIds); if (!result.error) profiles = result.data || []; }
+  if (otherIds.length) {
+    try {
+      const result = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").in("id", otherIds);
+      if (!result.error) profiles = result.data || [];
+    } catch (_) {}
+  }
   const profileById = new Map(profiles.map(p => [p.id, p]));
-  const { data: messageRows, error: messageError } = await supabase.from("messages").select("id,conversation_id,sender_id,content,message_type,created_at,is_deleted").in("conversation_id", ids).order("created_at", { ascending: false });
-  if (messageError) throw messageError;
+
+  // The chat list must not disappear just because preview/unread data is unavailable.
+  // Load messages as optional enrichment only.
+  let messageRows = [];
+  try {
+    const result = await supabase.from("messages").select("id,conversation_id,sender_id,content,message_type,created_at,is_deleted").in("conversation_id", ids).order("created_at", { ascending: false }).limit(500);
+    if (!result.error) messageRows = result.data || [];
+  } catch (_) {}
+
   const latestByConversation = new Map();
-  for (const message of messageRows || []) if (!latestByConversation.has(message.conversation_id)) latestByConversation.set(message.conversation_id, message);
+  for (const message of messageRows) if (!latestByConversation.has(message.conversation_id)) latestByConversation.set(message.conversation_id, message);
+
   return rows.map(row => {
     const conversation = { ...(conversationById.get(row.conversation_id) || {}), ...row };
-    const other = (memberRows || []).find(m => m.conversation_id === row.conversation_id && m.user_id !== userId);
+    const other = memberRows.find(m => m.conversation_id === row.conversation_id && m.user_id !== userId);
     conversation._direct_profile = other ? profileById.get(other.user_id) || null : null;
     conversation._latest_message = latestByConversation.get(row.conversation_id) || null;
     const lastRead = row.last_read_at ? new Date(row.last_read_at).getTime() : 0;
-    conversation.unread_count = (messageRows || []).filter(m => m.conversation_id === row.conversation_id && m.sender_id !== userId && !m.is_deleted && new Date(m.created_at).getTime() > lastRead).length;
+    conversation.unread_count = messageRows.filter(m => m.conversation_id === row.conversation_id && m.sender_id !== userId && !m.is_deleted && new Date(m.created_at).getTime() > lastRead).length;
     conversation._display_name = conversation.name || conversation._direct_profile?.display_name || conversation._direct_profile?.username || (conversation.type === "group" ? "Group conversation" : "Direct conversation");
     return conversation;
   });
@@ -56,14 +75,11 @@ export async function getMessages(conversationId, limit = 100, userId = null) {
   const { data, error } = await supabase.from("messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(limit);
   if (error) throw error;
   const messages = data || [];
-  // Reading a chat must never prevent the messages themselves from rendering.
-  let readerId = userId;
-  if (!readerId) { try { const { data: authData } = await supabase.auth.getUser(); readerId = authData?.user?.id || null; } catch {} }
-  if (readerId) { try { await markConversationAsRead(conversationId, readerId); } catch {} }
   const senderIds = [...new Set(messages.map(m => m.sender_id).filter(Boolean))];
-  if (senderIds.length) { try { const { data: profiles } = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").in("id", senderIds); const byId = new Map((profiles || []).map(p => [p.id, p])); messages.forEach(m => { m.profiles = byId.get(m.sender_id) || null; }); } catch {} }
+  if (senderIds.length) { const { data: profiles } = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").in("id", senderIds); const byId = new Map((profiles || []).map(p => [p.id, p])); messages.forEach(m => { m.profiles = byId.get(m.sender_id) || null; }); }
   const replyIds = [...new Set(messages.map(m => m.reply_to_id).filter(Boolean))];
-  if (replyIds.length) { try { const { data: replies } = await supabase.from("messages").select("*").in("id", replyIds); const byId = new Map((replies || []).map(r => [r.id, r])); messages.forEach(m => { if (m.reply_to_id) m.reply_to = byId.get(m.reply_to_id) || null; }); } catch {} }
+  if (replyIds.length) { const { data: replies } = await supabase.from("messages").select("*").in("id", replyIds); const byId = new Map((replies || []).map(r => [r.id, r])); messages.forEach(m => { if (m.reply_to_id) m.reply_to = byId.get(m.reply_to_id) || null; }); }
+  if (userId) { try { await markConversationAsRead(conversationId, userId); } catch (_) {} }
   return messages;
 }
 
