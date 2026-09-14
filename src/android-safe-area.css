@@ -23,6 +23,15 @@ body {
     height: calc(56px + max(env(safe-area-inset-top, 0px), 24px));
     padding-top: max(env(safe-area-inset-top, 0px), 24px);
   }
+
+  /* The Android status-bar-safe header is visually taller than the
+     compact mobile header's original layout slot. Keep Communities
+     and Profile below the full visible header instead of letting their
+     first content row slide underneath it. */
+  .content:has(.community-workspace),
+  .content:has(.profile-pro) {
+    padding-top: max(10px, max(env(safe-area-inset-top, 0px), 24px));
+  }
 }
 
 /* The splash remains full-screen while its visible content respects the inset. */
