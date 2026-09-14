@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import "./chat-media-save";
 
 const BADGE_ATTR = "data-convogram-message-badge";
 let refreshTimer = null;
