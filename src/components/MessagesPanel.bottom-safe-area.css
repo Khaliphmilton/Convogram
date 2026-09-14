@@ -1,0 +1,35 @@
+/* Keep the chat composer as the absolute bottom boundary on Android.
+   Nothing from the message area is allowed to render beneath it. */
+@media (max-width: 760px) {
+  .messages-panel.chat-open > .chat-window {
+    padding-bottom: 0 !important;
+    background: #080808 !important;
+  }
+
+  .messages-panel.chat-open > .chat-window .message-stream {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    background: #080808 !important;
+  }
+
+  .messages-panel.chat-open > .chat-window .message-composer {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+    min-height: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 6px 8px env(safe-area-inset-bottom, 0px) !important;
+    background: #0b0b0b !important;
+    border-top: 1px solid #202020 !important;
+    border-bottom: 0 !important;
+    overflow: hidden !important;
+    z-index: 20 !important;
+    box-shadow: 0 -1px 0 #202020 !important;
+  }
+
+  .messages-panel.chat-open > .chat-window .reply-banner,
+  .messages-panel.chat-open > .chat-window .convogram-emoji-panel {
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
