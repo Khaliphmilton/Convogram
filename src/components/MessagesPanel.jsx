@@ -4,80 +4,48 @@ import { MessagesPanel as OriginalMessagesPanel } from "./MessagesPanelOriginal"
 class MessagesErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { failed: false, error: null };
+    this.state = { failed: false };
   }
 
-  static getDerivedStateFromError(error) {
-    return { failed: true, error };
+  static getDerivedStateFromError() {
+    return { failed: true };
   }
 
   componentDidCatch(error) {
     console.error("Convogram Messages failed to render:", error);
   }
 
-  retry = () => {
-    this.setState({ failed: false, error: null });
-  };
+  retry = () => this.setState({ failed: false });
 
   render() {
-    if (!this.state.failed) return this.props.children;
-
-    return (
-      <section
-        aria-live="polite"
-        style={{
-          minHeight: "min(720px, calc(100vh - 132px))",
-          height: "calc(100vh - 132px)",
-          display: "grid",
-          placeItems: "center",
-          padding: "24px",
-          boxSizing: "border-box",
-          background: "#080808",
-          color: "#f5f5f5",
-          border: "1px solid #202020",
-          borderRadius: "16px",
-          textAlign: "center",
-        }}
-      >
-        <div>
-          <strong style={{ display: "block", fontSize: "18px", marginBottom: "8px" }}>
-            Messages could not open
-          </strong>
-          <p style={{ color: "#8f8f8f", margin: "0 0 16px", maxWidth: 320 }}>
-            The Messages screen hit an error. Your chats are not deleted.
-          </p>
-          <button
-            type="button"
-            onClick={this.retry}
-            style={{
-              border: 0,
-              borderRadius: "999px",
-              padding: "10px 18px",
-              background: "#fff",
-              color: "#080808",
-              fontWeight: 700,
-            }}
-          >
-            Try again
-          </button>
-          {import.meta.env?.DEV && this.state.error?.message ? (
-            <small style={{ display: "block", color: "#666", marginTop: "12px", maxWidth: 320 }}>
-              {this.state.error.message}
-            </small>
-          ) : null}
-        </div>
-      </section>
-    );
+    if (this.state.failed) {
+      return (
+        <section className="messages-fallback-shell" aria-live="polite">
+          <div className="messages-fallback-card">
+            <strong>Messages</strong>
+            <p>The Messages screen could not render.</p>
+            <button type="button" onClick={this.retry}>Try again</button>
+          </div>
+        </section>
+      );
+    }
+    return this.props.children;
   }
 }
 
-// Keep the original Messages implementation intact, but prevent a render-time
-// exception from turning the entire Messages page into a blank screen.
+// Keep the complete original chat implementation, but give the page a
+// guaranteed visible container so a mobile rendering failure can never turn
+// the entire Messages page into an empty screen.
 export function MessagesPanel(props) {
   return (
-    <MessagesErrorBoundary>
-      <OriginalMessagesPanel {...props} />
-    </MessagesErrorBoundary>
+    <div className="messages-page-shell">
+      <div className="messages-page-fallback-content" aria-hidden="true">
+        <div className="messages-page-fallback-title">Messages</div>
+      </div>
+      <MessagesErrorBoundary>
+        <OriginalMessagesPanel {...props} />
+      </MessagesErrorBoundary>
+    </div>
   );
 }
 
