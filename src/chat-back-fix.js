@@ -28,8 +28,10 @@ const closeOpenNestedScreen = () => {
 
   const groupButton = findGroupChatBackButton();
   if (groupButton) {
-    chatButton = findGroupChatBackButton();
+    groupButton.click();
+    return true;
   }
+
   return false;
 };
 
