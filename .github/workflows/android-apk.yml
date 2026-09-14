@@ -44,6 +44,10 @@ jobs:
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap add android
           npx cap sync android
+      - name: Configure Firebase Android push
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: node scripts/configure-firebase-android.mjs
       - name: Add Android permissions
         run: node scripts/add-android-permissions.mjs
       - name: Install SVG build tool
