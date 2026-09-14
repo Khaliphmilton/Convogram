@@ -14,6 +14,7 @@
     "@capacitor/app": "latest",
     "@capacitor/camera": "latest",
     "@capacitor/haptics": "latest",
+    "@capacitor/local-notifications": "latest",
     "@capacitor/push-notifications": "latest",
     "@capacitor/status-bar": "latest",
     "@capacitor-community/media": "^9.1.0",
