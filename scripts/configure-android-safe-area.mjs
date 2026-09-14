@@ -24,8 +24,8 @@ const methodBlock = `
         Window window = getWindow();
         // The native Activity owns the system-bar boundaries. Do not draw the
         // WebView underneath Android's status/navigation bars on Android 11-14.
-        // This also gives Capacitor a viewport that starts below the status bar
-        // and ends above the navigation bar, preventing double safe-area math.
+        // This gives Capacitor a viewport that starts below the status bar and
+        // ends above the navigation bar, preventing double safe-area math.
         WindowCompat.setDecorFitsSystemWindows(window, true);
         window.setStatusBarColor(android.graphics.Color.rgb(7, 20, 38));
         window.setNavigationBarColor(android.graphics.Color.rgb(7, 20, 38));
@@ -38,17 +38,20 @@ const methodBlock = `
         }
         window.getDecorView().setSystemUiVisibility(0);
     }
+
+    // Kept as a no-op compatibility hook: safe-area geometry is intentionally
+    // owned by the Activity rather than adding a second WebView padding layer.
+    private void configureConvogramWebViewInsets() {
+    }
 `;
 
-// Replace a previously generated safe-area implementation, if present.
+// Replace any previous generated safe-area implementation before installing
+// the single, non-edge-to-edge Activity configuration.
 activity = activity.replace(/\n    private void configureConvogramSystemBars\(\) \{[\s\S]*?\n    \}\n(?=\s*(?:private|@Override|\}))/m, '\n');
 activity = activity.replace(/\n    private void configureConvogramWebViewInsets\(\) \{[\s\S]*?\n    \}\n(?=\s*(?:private|@Override|\}))/m, '\n');
+activity = activity.replace(marker, marker + methodBlock);
 
-if (!activity.includes('configureConvogramSystemBars()')) {
-  activity = activity.replace(marker, marker + methodBlock);
-}
-
-const onCreate = `    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        configureConvogramSystemBars();\n        super.onCreate(savedInstanceState);\n    }\n\n`;
+const onCreate = `    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        configureConvogramSystemBars();\n        super.onCreate(savedInstanceState);\n        configureConvogramWebViewInsets();\n    }\n\n`;
 
 if (activity.includes('public void onCreate(Bundle savedInstanceState)')) {
   activity = activity.replace(/@Override\s+public void onCreate\(Bundle savedInstanceState\)\s*\{[\s\S]*?\n    \}/m, onCreate.trimEnd());
@@ -57,4 +60,4 @@ if (activity.includes('public void onCreate(Bundle savedInstanceState)')) {
 }
 
 fs.writeFileSync(activityPath, activity);
-console.log('Configured Convogram Android safe area: native Activity owns status/navigation bar insets; WebView is not edge-to-edge.');
+console.log('Configured Convogram Android safe area: native Activity owns status/navigation bar boundaries; WebView is not edge-to-edge and is not padded a second time.');
