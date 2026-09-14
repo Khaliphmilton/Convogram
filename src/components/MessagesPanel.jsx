@@ -1,5 +1,6 @@
 import { Component } from "react";
 import { MessagesPanel as OriginalMessagesPanel } from "./MessagesPanelOriginal";
+import "./MessagesPanel.shell.css";
 
 class MessagesErrorBoundary extends Component {
   constructor(props) {
