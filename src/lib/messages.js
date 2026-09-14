@@ -55,13 +55,15 @@ export async function getConversationDetails(conversationId) { const { data, err
 export async function getMessages(conversationId, limit = 100, userId = null) {
   const { data, error } = await supabase.from("messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(limit);
   if (error) throw error;
-  let readerId = userId; if (!readerId) { const { data: authData } = await supabase.auth.getUser(); readerId = authData?.user?.id || null; }
-  if (readerId) await markConversationAsRead(conversationId, readerId);
   const messages = data || [];
+  // Reading a chat must never prevent the messages themselves from rendering.
+  let readerId = userId;
+  if (!readerId) { try { const { data: authData } = await supabase.auth.getUser(); readerId = authData?.user?.id || null; } catch {} }
+  if (readerId) { try { await markConversationAsRead(conversationId, readerId); } catch {} }
   const senderIds = [...new Set(messages.map(m => m.sender_id).filter(Boolean))];
-  if (senderIds.length) { const { data: profiles } = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").in("id", senderIds); const byId = new Map((profiles || []).map(p => [p.id, p])); messages.forEach(m => { m.profiles = byId.get(m.sender_id) || null; }); }
+  if (senderIds.length) { try { const { data: profiles } = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").in("id", senderIds); const byId = new Map((profiles || []).map(p => [p.id, p])); messages.forEach(m => { m.profiles = byId.get(m.sender_id) || null; }); } catch {} }
   const replyIds = [...new Set(messages.map(m => m.reply_to_id).filter(Boolean))];
-  if (replyIds.length) { const { data: replies } = await supabase.from("messages").select("*").in("id", replyIds); const byId = new Map((replies || []).map(r => [r.id, r])); messages.forEach(m => { if (m.reply_to_id) m.reply_to = byId.get(m.reply_to_id) || null; }); }
+  if (replyIds.length) { try { const { data: replies } = await supabase.from("messages").select("*").in("id", replyIds); const byId = new Map((replies || []).map(r => [r.id, r])); messages.forEach(m => { if (m.reply_to_id) m.reply_to = byId.get(m.reply_to_id) || null; }); } catch {} }
   return messages;
 }
 
