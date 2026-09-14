@@ -2,18 +2,19 @@ import { App as CapacitorApp } from "@capacitor/app";
 
 const findChatBackButton = () => document.querySelector(".chat-back-button");
 const findGroupChatBackButton = () => document.querySelector(".group-chat-back");
+
 const closeEmojiPicker = () => {
-  const panel = document.querySelector(".convogram-emoji-panel");
-  if (!panel) return false;
-  const toggle = document.querySelector(".convogram-emoji-toggle");
+  // The toggle carries the authoritative open/closed state. Check it first
+  // so Android Back cannot fall through to the chat back button.
+  const toggle = document.querySelector(".convogram-emoji-toggle.active");
   if (!toggle) return false;
   toggle.click();
   return true;
 };
 
 const closeOpenNestedScreen = () => {
-  // The emoji picker is an in-chat overlay, so Android Back closes it first
-  // without leaving the conversation or clearing the message draft.
+  // Emoji picker is an in-chat overlay. It must consume Android Back before
+  // the conversation's Back button gets a chance to run.
   if (closeEmojiPicker()) return true;
 
   const chatButton = findChatBackButton();
@@ -32,13 +33,26 @@ const closeOpenNestedScreen = () => {
 window.__convogramChatBack = (event) => {
   if (!closeOpenNestedScreen()) return false;
   event?.preventDefault?.();
+  event?.stopPropagation?.();
   return true;
 };
 
 let nativeBackListener = null;
 CapacitorApp.addListener("backButton", async () => {
-  // Nested screens and in-chat overlays always get first priority.
-  if (closeOpenNestedScreen()) return;
+  // Never leave an open chat while the emoji picker is active.
+  if (closeEmojiPicker()) return;
+
+  const chatButton = findChatBackButton();
+  if (chatButton) {
+    chatButton.click();
+    return;
+  }
+
+  const groupButton = findGroupChatBackButton();
+  if (groupButton) {
+    groupButton.click();
+    return;
+  }
 
   // Notifications and other in-app pages are represented by browser history.
   const state = window.history.state;
