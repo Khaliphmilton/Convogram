@@ -13,7 +13,6 @@ function walk(dir) {
   return out;
 }
 
-// Remove every Capacitor-generated branding/splash resource.
 for (const file of walk(res)) {
   const name = path.basename(file).toLowerCase();
   if (name.includes('capacitor') || name.includes('splash_screen')) fs.rmSync(file, { force: true });
@@ -22,16 +21,12 @@ for (const dirName of ['mipmap-anydpi', 'mipmap-anydpi-v26']) {
   fs.rmSync(path.join(res, dirName), { recursive: true, force: true });
 }
 
-// Keep the Convogram launcher icon. Do not generate a second native splash.
 for (const density of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
   for (const name of ['ic_launcher.png', 'ic_launcher_round.png']) {
     if (!fs.existsSync(path.join(res, `mipmap-${density}`, name))) throw new Error(`Missing Convogram launcher icon: ${density}/${name}`);
   }
 }
 
-// Android requires a launch window, but the branded splash belongs to the
-// original in-app Convogram splash. Keep the native launch window clean so
-// there is no new/duplicated splash artwork.
 const drawable = path.join(res, 'drawable');
 const values = path.join(res, 'values');
 const valuesV31 = path.join(res, 'values-v31');
@@ -71,25 +66,64 @@ if (!manifest.includes('android:theme="@style/ConvogramLaunchTheme"')) {
 fs.writeFileSync(manifestPath, manifest);
 
 // Configure the native Android window as the single source of truth for system-bar insets.
-const mainActivityPath = path.resolve("android/app/src/main/java/com/convogram/app/MainActivity.java");
+const mainActivityPath = path.resolve('android/app/src/main/java/com/convogram/app/MainActivity.java');
 if (fs.existsSync(mainActivityPath)) {
-  let activity = fs.readFileSync(mainActivityPath, "utf8");
-  if (!activity.includes("import android.view.Window;")) activity = activity.replace("package com.convogram.app;\\n", "package com.convogram.app;\\n\\nimport android.view.Window;\\n");
-  if (!activity.includes("import android.os.Build;")) activity = activity.replace("package com.convogram.app;\\n", "package com.convogram.app;\\n\\nimport android.os.Build;\\n");
-  if (!activity.includes("import androidx.core.view.WindowCompat;")) activity = activity.replace("import android.view.Window;\\n", "import android.view.Window;\\nimport androidx.core.view.WindowCompat;\\n");
-  if (!activity.includes("configureConvogramSystemBars")) {
-    const marker = "public class MainActivity extends BridgeActivity {";
-    const method = "\\n    private void configureConvogramSystemBars() {\\n        Window window = getWindow();\\n        WindowCompat.setDecorFitsSystemWindows(window, true);\\n        window.setStatusBarColor(android.graphics.Color.rgb(7, 20, 38));\\n        window.setNavigationBarColor(android.graphics.Color.rgb(7, 20, 38));\\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) { window.setNavigationBarDividerColor(android.graphics.Color.rgb(7, 20, 38)); }\\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { window.setStatusBarContrastEnforced(false); window.setNavigationBarContrastEnforced(false); }\\n        window.getDecorView().setSystemUiVisibility(0);\\n    }\\n";
-    if (!activity.includes(marker)) throw new Error("MainActivity class marker not found.");
+  let activity = fs.readFileSync(mainActivityPath, 'utf8');
+
+  const packageLine = 'package com.convogram.app;';
+  if (!activity.includes('import android.os.Build;')) {
+    activity = activity.replace(packageLine, `${packageLine}\n\nimport android.os.Build;`);
+  }
+  if (!activity.includes('import android.view.Window;')) {
+    activity = activity.replace(packageLine, `${packageLine}\n\nimport android.view.Window;`);
+  }
+  if (!activity.includes('import androidx.core.view.WindowCompat;')) {
+    activity = activity.replace(packageLine, `${packageLine}\n\nimport androidx.core.view.WindowCompat;`);
+  }
+
+  if (!activity.includes('configureConvogramSystemBars')) {
+    const marker = 'public class MainActivity extends BridgeActivity {';
+    const method = `
+    private void configureConvogramSystemBars() {
+        Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, true);
+        window.setStatusBarColor(android.graphics.Color.rgb(7, 20, 38));
+        window.setNavigationBarColor(android.graphics.Color.rgb(7, 20, 38));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.setNavigationBarDividerColor(android.graphics.Color.rgb(7, 20, 38));
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.setStatusBarContrastEnforced(false);
+            window.setNavigationBarContrastEnforced(false);
+        }
+        window.getDecorView().setSystemUiVisibility(0);
+    }
+`;
+    if (!activity.includes(marker)) throw new Error('MainActivity class marker not found.');
     activity = activity.replace(marker, marker + method);
   }
-  if (!activity.includes("configureConvogramSystemBars();")) {
-    if (activity.includes("public void onCreate(Bundle savedInstanceState) {")) activity = activity.replace("public void onCreate(Bundle savedInstanceState) {\\n", "public void onCreate(Bundle savedInstanceState) {\\n        configureConvogramSystemBars();\\n");
-    else activity = activity.replace("public class MainActivity extends BridgeActivity {", "public class MainActivity extends BridgeActivity {\\n    @Override\\n    public void onCreate(Bundle savedInstanceState) {\\n        configureConvogramSystemBars();\\n        super.onCreate(savedInstanceState);\\n    }");
+
+  if (!activity.includes('configureConvogramSystemBars();')) {
+    if (activity.includes('public void onCreate(Bundle savedInstanceState) {')) {
+      activity = activity.replace(
+        'public void onCreate(Bundle savedInstanceState) {\n',
+        'public void onCreate(Bundle savedInstanceState) {\n        configureConvogramSystemBars();\n'
+      );
+    } else {
+      activity = activity.replace(
+        'public class MainActivity extends BridgeActivity {',
+        `public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        configureConvogramSystemBars();
+        super.onCreate(savedInstanceState);
+    }`
+      );
+    }
   }
   fs.writeFileSync(mainActivityPath, activity);
 }
-// Keep release versioning unchanged.
+
 const gradlePath = path.resolve('android/app/build.gradle');
 const versionCode = Number(process.env.ANDROID_VERSION_CODE || '1');
 const versionName = process.env.ANDROID_VERSION_NAME || `1.0.${versionCode}`;
