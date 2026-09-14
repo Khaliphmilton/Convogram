@@ -6,7 +6,7 @@
   }
 
   .messages-panel.chat-open > .chat-window .message-stream {
-    padding-bottom: calc(76px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+    padding-bottom: calc(76px + max(env(safe-area-inset-bottom, 0px), 24px) + 11px) !important;
     background: #080808 !important;
   }
 
@@ -14,7 +14,7 @@
     position: absolute !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: max(env(safe-area-inset-bottom, 0px), 24px) !important;
+    bottom: calc(max(env(safe-area-inset-bottom, 0px), 24px) + 11px) !important;
     height: 58px !important;
     min-height: 58px !important;
     max-height: 58px !important;
@@ -29,12 +29,10 @@
 
   .messages-panel.chat-open > .chat-window .reply-banner,
   .messages-panel.chat-open > .chat-window .convogram-emoji-panel {
-    bottom: calc(58px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+    bottom: calc(58px + max(env(safe-area-inset-bottom, 0px), 24px) + 11px) !important;
   }
 
-  /* New stable chat markup: every message row must keep its natural height.
-     Without flex-shrink:0, a long conversation can shrink all rows toward
-     zero height, making the bubbles visually stack on top of each other. */
+  /* New stable chat markup: every message row must keep its natural height. */
   .messages-panel.chat-open .convogram-stable-chat-stream {
     align-items: stretch !important;
     justify-content: flex-start !important;
