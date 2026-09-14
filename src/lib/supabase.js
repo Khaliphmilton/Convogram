@@ -1,4 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
+import { LocalNotifications } from "@capacitor/local-notifications";
 
 // Build-time environment variables are preferred for deployments.
 // The publishable key is safe for browser use; never put a service-role/secret key here.
@@ -11,9 +14,6 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
-// Prevent a slow/unreachable network request from keeping Convogram on the
-// startup splash forever. Supabase requests fail fast and the app can still
-// render the login/app shell and show a useful error state.
 const DEFAULT_TIMEOUT_MS = 8000;
 const timedFetch = (input, init = {}) => {
   const controller = new AbortController();
@@ -23,28 +23,130 @@ const timedFetch = (input, init = {}) => {
     if (externalSignal.aborted) controller.abort(externalSignal.reason);
     else externalSignal.addEventListener("abort", onAbort, { once: true });
   }
-
   const timeoutId = setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), DEFAULT_TIMEOUT_MS);
-
   return fetch(input, { ...init, signal: controller.signal }).finally(() => {
     clearTimeout(timeoutId);
     externalSignal?.removeEventListener("abort", onAbort);
   });
 };
 
-// Keep the Supabase session persistent on this device so a user stays logged in
-// after closing/reopening Convogram. Supabase manages the session tokens in its
-// auth storage; Convogram never stores the user's password.
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
   },
-  global: {
-    fetch: timedFetch,
-  },
+  global: { fetch: timedFetch },
 });
+
+// Android push registration. This runs only in the native Android build; web builds
+// keep using the normal browser notification behavior and never touch FCM APIs.
+let pushListenersInstalled = false;
+let pushUserId = null;
+let pushNotificationId = 10000;
+
+async function saveAndroidPushToken(userId, token) {
+  if (!userId || !token) return;
+  const { data: existing, error: lookupError } = await supabase
+    .from("notification_devices")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("platform", "android")
+    .eq("endpoint", token)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (existing?.id) {
+    const { error } = await supabase.from("notification_devices").update({ updated_at: new Date().toISOString() }).eq("id", existing.id);
+    if (error) throw error;
+    return;
+  }
+  // Remove older Android registrations for this user only after the new token is
+  // known. This prevents stale tokens from accumulating on reinstall/update.
+  await supabase.from("notification_devices").delete().eq("user_id", userId).eq("platform", "android").neq("endpoint", token);
+  const { error } = await supabase.from("notification_devices").insert({ user_id: userId, platform: "android", endpoint: token });
+  if (error) throw error;
+}
+
+async function initializeAndroidPush(userId) {
+  if (!userId || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
+  pushUserId = userId;
+  try {
+    if (!pushListenersInstalled) {
+      pushListenersInstalled = true;
+      await PushNotifications.addListener("registration", async ({ value }) => {
+        try { await saveAndroidPushToken(pushUserId, value); }
+        catch (error) { console.warn("Convogram push token save failed", error); }
+      });
+      await PushNotifications.addListener("registrationError", (error) => console.warn("Convogram FCM registration failed", error));
+      await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+        // FCM notification payloads are displayed by Android while the app is in
+        // the background. For foreground delivery, mirror it as a local notification.
+        try {
+          const permission = await LocalNotifications.checkPermissions();
+          if (permission.display !== "granted") return;
+          await LocalNotifications.schedule({ notifications: [{
+            id: pushNotificationId++,
+            title: notification?.title || "Convogram",
+            body: notification?.body || "You have a new notification.",
+            channelId: "convogram_notifications",
+            smallIcon: "ic_stat_convogram",
+            extra: notification?.data || {},
+          }] });
+        } catch (error) { console.warn("Convogram foreground notification failed", error); }
+      });
+      await PushNotifications.addListener("pushNotificationActionPerformed", ({ notification }) => {
+        try { window.dispatchEvent(new CustomEvent("convogram_push_opened", { detail: notification?.data || {} })); } catch (_) {}
+      });
+    }
+
+    let permission = await PushNotifications.checkPermissions();
+    if (permission.receive !== "granted") permission = await PushNotifications.requestPermissions();
+    if (permission.receive !== "granted") return;
+
+    try {
+      await PushNotifications.createChannel({
+        id: "convogram_notifications",
+        name: "Convogram notifications",
+        description: "Messages, calls and other Convogram alerts",
+        importance: 5,
+        visibility: 1,
+        sound: "default",
+        vibration: true,
+      });
+    } catch (_) {}
+
+    try {
+      let localPermission = await LocalNotifications.checkPermissions();
+      if (localPermission.display !== "granted") localPermission = await LocalNotifications.requestPermissions();
+      if (localPermission.display === "granted") {
+        await LocalNotifications.createChannel({
+          id: "convogram_notifications",
+          name: "Convogram notifications",
+          description: "Messages, calls and other Convogram alerts",
+          importance: 5,
+          visibility: 1,
+          sound: "default",
+          vibration: true,
+        });
+      }
+    } catch (_) {}
+
+    await PushNotifications.register();
+  } catch (error) {
+    console.warn("Convogram Android push setup failed", error);
+  }
+}
+
+if (typeof window !== "undefined" && !window.__convogramPushAuthListener) {
+  window.__convogramPushAuthListener = true;
+  supabase.auth.getSession().then(({ data }) => {
+    if (data?.session?.user?.id) initializeAndroidPush(data.session.user.id);
+  }).catch(() => {});
+  supabase.auth.onAuthStateChange((_event, session) => {
+    pushUserId = session?.user?.id || null;
+    if (session?.user?.id) initializeAndroidPush(session.user.id);
+  });
+}
 
 // Safety override for the mobile chat view. The previous full-viewport fixed
 // layer could cover the application with a black surface while a conversation
