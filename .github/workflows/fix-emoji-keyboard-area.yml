@@ -18,33 +18,21 @@ jobs:
           python3 - <<'PY'
           import re
           from pathlib import Path
-
           jsx = Path('src/components/MessagesPanelOriginal.jsx')
           s = jsx.read_text()
-
-          # Add picker open state without changing the existing chat state.
+          anchor = 'const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 });'
           if 'const [emojiOpen, setEmojiOpen]' not in s:
-              anchor = 'const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 });'
-              if anchor not in s:
-                  raise SystemExit('chat state anchor not found')
+              if anchor not in s: raise SystemExit('chat state anchor not found')
               s = s.replace(anchor, anchor + '\n  const [emojiOpen, setEmojiOpen] = useState(false);', 1)
-
-          # Add controlled open/close behavior. Opening blurs the input so Android's keyboard closes;
-          # closing restores focus to the composer.
           marker = '  const scrollToPinned = () => {'
           if 'const toggleEmojiPicker' not in s:
-              if marker not in s:
-                  raise SystemExit('scrollToPinned marker not found')
+              if marker not in s: raise SystemExit('scrollToPinned marker not found')
               helper = '  const toggleEmojiPicker = () => { setEmojiOpen(open => { const next = !open; requestAnimationFrame(() => { if (next) document.activeElement?.blur(); else composerRef.current?.focus(); }); return next; }); };\n'
               s = s.replace(marker, helper + marker, 1)
-
-          # Replace the existing picker instance only; preserve the full library and its categories.
-          if '<EmojiPicker' not in s:
-              raise SystemExit('EmojiPicker component not found')
           start = s.find('<EmojiPicker')
+          if start < 0: raise SystemExit('EmojiPicker component not found')
           end = s.find('/>', start)
-          if end < 0:
-              raise SystemExit('EmojiPicker closing marker not found')
+          if end < 0: raise SystemExit('EmojiPicker closing marker not found')
           component = '''<EmojiPicker
           onEmojiClick={(emojiData) => { setDraft(value => value + emojiData.emoji); requestAnimationFrame(() => composerRef.current?.focus()); }}
           width="100%"
@@ -55,52 +43,39 @@ jobs:
           skinTonesDisabled={false}
           lazyLoadEmojis={true}
         />'''
-          # Ensure the picker is conditionally rendered and occupies the keyboard region above the composer.
-          prefix = s[max(0, start-80):start]
-          if 'emoji-keyboard-replacement' not in s:
-              # Replace only the picker component with the controlled replacement wrapper.
-              s = s[:start] + '{emojiOpen && <div className="convogram-emoji-keyboard-replacement">' + component + '</div>}' + s[end+2:]
-          else:
-              s = s[:start] + component + s[end+2:]
-
-          # Add a dedicated emoji toggle immediately before the existing image/media button.
+          replacement = '{emojiOpen && <div className="convogram-emoji-keyboard-replacement" role="dialog" aria-label="Emoji picker">' + component + '</div>}'
+          s = s[:start] + replacement + s[end+2:]
           if 'aria-label="Open emoji picker"' not in s:
-              m = re.search(r'<button(?=[^>]*className="convogram-stable-icon")[^>]*>\s*<ImagePlus', s)
-              if not m:
-                  m = re.search(r'<button(?=[^>]*className="convogram-stable-icon")[^>]*>\s*<ImagePlus', s)
-              if not m:
-                  raise SystemExit('media button marker not found')
+              image_pos = s.find('<ImagePlus')
+              if image_pos < 0: raise SystemExit('ImagePlus marker not found')
+              button_start = s.rfind('<button', 0, image_pos)
+              if button_start < 0: raise SystemExit('media button start not found')
               button = '<button type="button" className="convogram-stable-icon" aria-label="Open emoji picker" aria-pressed={emojiOpen} onClick={toggleEmojiPicker}><Smile size={20}/></button>'
-              s = s[:m.start()] + button + s[m.start():]
-
+              s = s[:button_start] + button + s[button_start:]
           jsx.write_text(s)
-
           css = Path('src/components/MessagesPanel.css')
           c = css.read_text()
-          c += '''\n/* Emoji picker occupies the keyboard area above the existing composer. */
-.convogram-stable-chat .convogram-emoji-keyboard-replacement{position:fixed;left:0;right:0;bottom:calc(68px + env(safe-area-inset-bottom,0px));height:min(42vh,360px);min-height:280px;z-index:80;background:#0b0b0b;border-top:1px solid #202020;box-shadow:0 -8px 28px rgba(0,0,0,.38);overflow:hidden}
+          c += '''\n/* Convogram emoji picker replaces the Android keyboard region while open. */
+.convogram-stable-chat .convogram-emoji-keyboard-replacement{position:fixed;left:0;right:0;bottom:calc(68px + env(safe-area-inset-bottom,0px));height:min(43vh,380px);min-height:270px;z-index:80;background:#0b0b0b;border-top:1px solid #202020;overflow:hidden;box-shadow:0 -8px 28px rgba(0,0,0,.38)}
 .convogram-stable-chat .convogram-emoji-keyboard-replacement .EmojiPickerReact{width:100%!important;height:100%!important;background:#0b0b0b!important;border:0!important;border-radius:0!important;--epr-bg-color:#0b0b0b;--epr-category-label-bg-color:#0b0b0b;--epr-picker-border-color:#202020;--epr-search-input-bg-color:#111;--epr-search-input-border-color:#252525;--epr-search-input-text-color:#fff;--epr-text-color:#fff;--epr-category-icon-active-color:#20a4f3;--epr-hover-bg-color:#151515;--epr-focus-bg-color:#151515}
-.convogram-stable-chat .convogram-emoji-keyboard-replacement .EmojiPickerReact .epr-emoji-category-label{background:#0b0b0b!important;color:#777!important}
-.convogram-stable-chat .convogram-emoji-keyboard-replacement .EmojiPickerReact .epr-search-container{background:#0b0b0b!important;padding:10px!important}
-.convogram-stable-chat .convogram-emoji-keyboard-replacement .EmojiPickerReact .epr-search-container input{background:#111!important;border:1px solid #252525!important;color:#fff!important;border-radius:20px!important}
-.convogram-stable-chat .convogram-emoji-keyboard-replacement .EmojiPickerReact .epr-category-nav{background:#0b0b0b!important;border-top:1px solid #202020!important}
-.convogram-stable-chat .convogram-emoji-keyboard-replacement .EmojiPickerReact .epr-category-nav button{background:transparent!important;color:#aaa!important}
-.convogram-stable-chat .convogram-emoji-keyboard-replacement .EmojiPickerReact .epr-category-nav button.epr-active{color:#20a4f3!important;background:#151515!important}
-.convogram-stable-chat .message-composer,.convogram-stable-chat .convogram-stable-composer{position:relative;z-index:90}
-@media(max-width:760px){.convogram-stable-chat .convogram-emoji-keyboard-replacement{bottom:calc(68px + env(safe-area-inset-bottom,0px));height:min(43vh,360px);min-height:260px}}
+.convogram-stable-chat .convogram-emoji-keyboard-replacement .epr-search-container{background:#0b0b0b!important;padding:10px!important}.convogram-stable-chat .convogram-emoji-keyboard-replacement .epr-search-container input{background:#111!important;border:1px solid #252525!important;color:#fff!important;border-radius:20px!important}.convogram-stable-chat .convogram-emoji-keyboard-replacement .epr-category-nav{background:#0b0b0b!important;border-top:1px solid #202020!important}.convogram-stable-chat .convogram-emoji-keyboard-replacement .epr-category-nav button{color:#aaa!important;background:transparent!important}.convogram-stable-chat .convogram-emoji-keyboard-replacement .epr-category-nav button.epr-active{color:#20a4f3!important;background:#151515!important}
+@media(max-width:760px){.convogram-stable-chat .convogram-emoji-keyboard-replacement{bottom:calc(68px + env(safe-area-inset-bottom,0px));height:min(44vh,380px);min-height:260px}}
 '''
           css.write_text(c)
           PY
-      - name: Validate build
+      - name: Validate patched source
         run: |
           npm install --no-audit --no-fund
+          grep -q 'const \[emojiOpen, setEmojiOpen\]' src/components/MessagesPanelOriginal.jsx
+          grep -q 'convogram-emoji-keyboard-replacement' src/components/MessagesPanelOriginal.jsx
+          grep -q 'aria-label="Open emoji picker"' src/components/MessagesPanelOriginal.jsx
           npm run build
-      - name: Commit
+      - name: Commit source patch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/components/MessagesPanelOriginal.jsx src/components/MessagesPanel.css package.json package-lock.json
-          git commit -m 'Fix emoji keyboard replacement area' || exit 0
+          git commit -m 'Apply emoji keyboard replacement patch' || exit 0
           git push
       - name: Remove one-time workflow
         if: success()
