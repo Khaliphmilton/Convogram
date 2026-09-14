@@ -5,6 +5,7 @@ import { getComments } from '../lib/posts';
 import { followUser, unfollowUser, isFollowing as checkIsFollowing } from '../lib/profiles';
 import { VerifiedBadge } from './VerifiedBadge';
 import './PostCard.css';
+import '../mobile-feed-fix.css';
 
 export function PostCard({ post, currentUserId, isLiked, onLike, onUnlike, onComment, onDelete, onFollowAuthor, isFollowing, onOpenProfile, likeCount = 0, commentCount = 0 }) {
   const [showComments,setShowComments]=React.useState(false),[comments,setComments]=React.useState([]),[comment,setComment]=React.useState(''),[submittingComment,setSubmittingComment]=React.useState(false),[loadingComments,setLoadingComments]=React.useState(false),[liking,setLiking]=React.useState(false),[following,setFollowing]=React.useState(!!isFollowing),[followBusy,setFollowBusy]=React.useState(false);
