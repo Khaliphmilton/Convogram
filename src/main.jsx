@@ -21,6 +21,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { SearchPage } from "./components/SearchPage";
 import { ProfileOptionsPage } from "./components/ProfileOptionsPage";
 import "./index.css";
+import "./call-overlay-bootstrap.jsx";
 import "./lib/message-unread-badge";
 
 const nav = [["home", "Home", Home], ["shorts", "Shorts", Zap], ["messages", "Messages", MessageCircle], ["communities", "Communities", Users], ["profile", "Profile", User]];
