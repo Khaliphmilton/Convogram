@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MessageCircle, Users, Search, Plus } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { MessagesPanel as OriginalMessagesPanel } from "./MessagesPanelOriginal";
+import { VerifiedBadge } from "./VerifiedBadge";
 import "./MessagesPanel.shell.css";
 
 async function loadConversationList(userId) {
@@ -21,8 +22,6 @@ async function loadConversationList(userId) {
   const ids = rows.map((r) => r.conversation_id).filter(Boolean);
   if (!ids.length) return [];
 
-  // Only request columns that actually exist in public.conversations.
-  // Do not request derived/nonexistent fields such as last_message_at.
   const { data: conversations, error: conversationsError } = await supabase
     .from("conversations")
     .select("id,created_by,type,name,avatar_url,created_at,updated_at")
@@ -41,10 +40,7 @@ async function loadConversationList(userId) {
     if (!result.error) otherMembers = result.data || [];
   } catch (_) {}
 
-  const otherIds = [
-    ...new Set(otherMembers.map((m) => m.user_id).filter((id) => id && id !== userId)),
-  ];
-
+  const otherIds = [...new Set(otherMembers.map((m) => m.user_id).filter((id) => id && id !== userId))];
   let profiles = [];
   if (otherIds.length) {
     try {
@@ -118,13 +114,11 @@ export function MessagesPanel(props) {
 
   useEffect(() => {
     let alive = true;
-
     const load = async () => {
       if (!props.userId) {
         if (alive) setLoading(false);
         return;
       }
-
       try {
         const data = await loadConversationList(props.userId);
         if (alive) {
@@ -138,11 +132,9 @@ export function MessagesPanel(props) {
         if (alive) setLoading(false);
       }
     };
-
     setLoading(true);
     load();
     const timer = setInterval(load, 5000);
-
     return () => {
       alive = false;
       clearInterval(timer);
@@ -167,7 +159,6 @@ export function MessagesPanel(props) {
   }
 
   const title = (c) => c?._display_name || c?.name || "Conversation";
-
   const preview = (c) => {
     const m = c?._latest_message;
     if (!m) return c?.type === "group" ? "Group" : "Private chat";
@@ -184,15 +175,9 @@ export function MessagesPanel(props) {
         <header className="messages-controller-head">
           <div>
             <h2>Messages</h2>
-            <span>
-              {items.length} conversation{items.length === 1 ? "" : "s"}
-            </span>
+            <span>{items.length} conversation{items.length === 1 ? "" : "s"}</span>
           </div>
-          <button
-            type="button"
-            aria-label="New chat"
-            onClick={() => window.dispatchEvent(new CustomEvent("convogram:new-chat"))}
-          >
+          <button type="button" aria-label="New chat" onClick={() => window.dispatchEvent(new CustomEvent("convogram:new-chat"))}>
             <Plus size={19} />
           </button>
         </header>
@@ -203,10 +188,7 @@ export function MessagesPanel(props) {
         </div>
 
         <div className="messages-controller-list">
-          {loading && items.length === 0 && (
-            <div className="messages-controller-state">Loading messages…</div>
-          )}
-
+          {loading && items.length === 0 && <div className="messages-controller-state">Loading messages…</div>}
           {!loading && !error && items.length === 0 && (
             <div className="messages-controller-state">
               <MessageCircle size={26} />
@@ -214,7 +196,6 @@ export function MessagesPanel(props) {
               <span>Start a chat to see it here.</span>
             </div>
           )}
-
           {error && (
             <div className="messages-controller-state">
               <strong>Messages unavailable</strong>
@@ -223,12 +204,7 @@ export function MessagesPanel(props) {
           )}
 
           {items.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className="messages-controller-item"
-              onClick={() => setSelectedId(c.id)}
-            >
+            <button key={c.id} type="button" className="messages-controller-item" onClick={() => setSelectedId(c.id)}>
               <div className="messages-controller-avatar">
                 {c?._direct_profile?.avatar_url ? (
                   <img src={c._direct_profile.avatar_url} alt="" />
@@ -240,9 +216,9 @@ export function MessagesPanel(props) {
               </div>
 
               <div className="messages-controller-copy">
-                <strong>
-                  {title(c)}
-                  {c._direct_profile?.is_verified && <span aria-label="Verified"> ✓</span>}
+                <strong className="messages-controller-name">
+                  <span className="messages-controller-name-text">{title(c)}</span>
+                  {c._direct_profile?.is_verified === true && <VerifiedBadge verified size={15} />}
                 </strong>
                 <span>{preview(c)}</span>
               </div>
