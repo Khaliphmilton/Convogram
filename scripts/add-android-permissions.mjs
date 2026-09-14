@@ -16,7 +16,6 @@ const additions = permissions.filter((p) => !xml.includes(p)).join("\n    ");
 if (additions && xml.includes(marker)) xml = xml.replace(marker, `${additions}\n    ${marker}`);
 fs.writeFileSync(path, xml);
 
-
 const pluginDir = "android/app/src/main/java/com/convogram/app";
 fs.mkdirSync(pluginDir, { recursive: true });
 fs.writeFileSync(`${pluginDir}/ConvogramMediaPermissionsPlugin.java`, `package com.convogram.app;
@@ -56,6 +55,12 @@ public class ConvogramMediaPermissionsPlugin extends Plugin {
 
 const mainActivityPath = "android/app/src/main/java/com/convogram/app/MainActivity.java";
 let mainActivity = fs.readFileSync(mainActivityPath, "utf8");
+if (!mainActivity.includes("import android.os.Bundle;")) {
+  mainActivity = mainActivity.replace(
+    /^package com\.convogram\.app;\s*/m,
+    "package com.convogram.app;\n\nimport android.os.Bundle;\n\n"
+  );
+}
 if (!mainActivity.includes("ConvogramMediaPermissionsPlugin")) {
   if (!mainActivity.includes("import com.getcapacitor.BridgeActivity;")) throw new Error("MainActivity.java did not contain the expected Capacitor import.");
   mainActivity = mainActivity.replace(
