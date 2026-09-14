@@ -1,3 +1,4 @@
+import 'node:fs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -65,8 +66,10 @@ if (!manifest.includes('android:theme="@style/ConvogramLaunchTheme"')) {
 }
 fs.writeFileSync(manifestPath, manifest);
 
-// Android is the single source of truth for system-bar geometry. The actual
-// status/navigation/gesture insets are read from WindowInsets at runtime.
+// Android is the single source of truth for system-bar geometry. The WebView
+// is edge-to-edge at the native level, then native code applies the exact
+// WindowInsets once to the WebView. The handled inset types are zeroed before
+// propagation so WebView does not apply the same bars a second time.
 const mainActivityPath = path.resolve('android/app/src/main/java/com/convogram/app/MainActivity.java');
 if (fs.existsSync(mainActivityPath)) {
   let activity = fs.readFileSync(mainActivityPath, 'utf8');
@@ -89,11 +92,10 @@ if (fs.existsSync(mainActivityPath)) {
     const method = `
     private void configureConvogramSystemBars() {
         Window window = getWindow();
-        if (Build.VERSION.SDK_INT < 35) {
-            WindowCompat.setDecorFitsSystemWindows(window, true);
-        } else {
-            WindowCompat.setDecorFitsSystemWindows(window, false);
-        }
+        // Keep the window edge-to-edge and apply the exact safe area once in
+        // configureConvogramWebViewInsets(). This also works on Android 11-14
+        // and remains compatible with Android 15 edge-to-edge enforcement.
+        WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(android.graphics.Color.rgb(7, 20, 38));
         window.setNavigationBarColor(android.graphics.Color.rgb(7, 20, 38));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -116,7 +118,14 @@ if (fs.existsSync(mainActivityPath)) {
                     | WindowInsetsCompat.Type.displayCutout()
             );
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            return insets;
+            return new WindowInsetsCompat.Builder(insets)
+                .setInsets(
+                    WindowInsetsCompat.Type.statusBars()
+                        | WindowInsetsCompat.Type.navigationBars()
+                        | WindowInsetsCompat.Type.displayCutout(),
+                    Insets.NONE
+                )
+                .build();
         });
         ViewCompat.requestApplyInsets(webView);
     }
