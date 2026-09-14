@@ -103,7 +103,18 @@ async function loadConversationList(userId) {
           (base.type === "group" ? "Group conversation" : "Direct conversation"),
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((a, b) => {
+      // The conversation with the most recently created message always comes first.
+      // Conversations with no messages stay below active conversations.
+      const aTime = a._latest_message?.created_at
+        ? new Date(a._latest_message.created_at).getTime()
+        : 0;
+      const bTime = b._latest_message?.created_at
+        ? new Date(b._latest_message.created_at).getTime()
+        : 0;
+      return bTime - aTime;
+    });
 }
 
 export function MessagesPanel(props) {
