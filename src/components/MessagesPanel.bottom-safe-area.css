@@ -31,4 +31,45 @@
   .messages-panel.chat-open > .chat-window .convogram-emoji-panel {
     bottom: calc(58px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
   }
+
+  /* New stable chat markup: every message row must keep its natural height.
+     Without flex-shrink:0, a long conversation can shrink all rows toward
+     zero height, making the bubbles visually stack on top of each other. */
+  .messages-panel.chat-open .convogram-stable-chat-stream {
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .messages-panel.chat-open .convogram-chat-row {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    position: relative !important;
+    align-items: flex-end !important;
+    margin: 0 !important;
+  }
+
+  .messages-panel.chat-open .convogram-chat-bubble {
+    flex: 0 0 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    position: relative !important;
+  }
+}
+
+/* Also protect the chat layout on wider screens when the message stream is tall. */
+.convogram-stable-chat-stream {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.convogram-chat-row {
+  flex: 0 0 auto;
+  height: auto;
+}
+.convogram-chat-bubble {
+  flex: 0 0 auto;
+  height: auto;
 }
