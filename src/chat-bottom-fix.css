@@ -1,0 +1,18 @@
+/* Chat viewport: when the bottom navigation is hidden, do not reserve its old space. */
+@media (max-width: 820px) {
+  body:has(.messages-panel.chat-open) .messages-panel.chat-open,
+  body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window {
+    bottom: 0 !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window .message-stream {
+    padding-bottom: 58px !important;
+  }
+
+  body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window .message-composer {
+    bottom: 0 !important;
+  }
+}
