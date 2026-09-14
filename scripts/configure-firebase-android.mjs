@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import "./configure-android-safe-area.mjs";
 
 const rawJson = process.env.GOOGLE_SERVICES_JSON;
 const b64 = process.env.GOOGLE_SERVICES_JSON_B64;
