@@ -1,0 +1,55 @@
+name: Add chat features
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-chat-features.yml'
+permissions:
+  contents: write
+jobs:
+  patch-chat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch chat UI
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/MessagesPanelOriginal.jsx')
+          s = p.read_text()
+          if 'Smile,' not in s.split('\n',1)[1]:
+              s = s.replace('CornerUpLeft, Trash2, Copy, X, Pencil, Pin }', 'CornerUpLeft, Trash2, Copy, X, Pencil, Pin, Smile }')
+          s = s.replace('const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 });', 'const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 });\n  const pinnedMessage = useMemo(() => messages.find(m => m.is_pinned) || null, [messages]);')
+          s = s.replace('  const beginEdit = m => { if(m.sender_id!==userId || m.message_type!=="text" || m.is_deleted) return; setEditingMessage(m); setDraft(m.content||""); setMenuMessage(null); setReactionOpen(false); requestAnimationFrame(()=>composerRef.current?.focus()); };', '  const beginEdit = m => { if(m.sender_id!==userId || m.message_type!=="text" || m.is_deleted) return; setEditingMessage(m); setDraft(m.content||""); setMenuMessage(null); setReactionOpen(false); requestAnimationFrame(()=>composerRef.current?.focus()); };\n  const scrollToPinned = () => { if (!pinnedMessage) return; const el = streamRef.current?.querySelector(`[data-message-id="${pinnedMessage.id}"]`); el?.scrollIntoView({ behavior: "smooth", block: "center" }); };')
+          marker = '<div className="convogram-stable-chat-body"><div className="convogram-stable-chat-stream" ref={streamRef}>'
+          repl = '<div className="convogram-stable-chat-body">{pinnedMessage && <button type="button" className="convogram-pinned-banner" onClick={scrollToPinned} aria-label="Jump to pinned message"><span className="convogram-pinned-banner-icon"><Pin size={15}/></span><span className="convogram-pinned-banner-copy"><strong>Pinned message</strong><span>{messageLabel(pinnedMessage)}</span></span><ChevronLeft size={15} className="convogram-pinned-banner-arrow" /></button>}<div className="convogram-stable-chat-stream" ref={streamRef}>'
+          if marker not in s: raise SystemExit('body marker not found')
+          s = s.replace(marker, repl, 1)
+          s = s.replace('<div key={message.id} className={`convogram-chat-row ${mine?"mine":""}`} style={{transform:`translateX(${offset}px)`}}>', '<div key={message.id} data-message-id={message.id} className={`convogram-chat-row ${mine?"mine":""}`} style={{transform:`translateX(${offset}px)`}}>')
+          composer_marker = '<div className="convogram-stable-composer-wrap"><input ref={fileRef}'
+          composer_repl = '<div className="convogram-stable-composer-wrap">{reactionOpen && <div className="convogram-emoji-panel" role="dialog" aria-label="Emoji picker">{["😀","😂","😍","🥰","😊","😎","😭","😡","👍","👏","🙏","❤️","🔥","🎉","💪","🤝","✨","💯","😢","🤣"].map(emoji => <button key={emoji} type="button" className="convogram-emoji-button" onClick={() => { setDraft(d => d + emoji); setReactionOpen(false); requestAnimationFrame(() => composerRef.current?.focus()); }}>{emoji}</button>)}</div>}<input ref={fileRef}'
+          if composer_marker not in s: raise SystemExit('composer marker not found')
+          s = s.replace(composer_marker, composer_repl, 1)
+          s = s.replace('<form className="convogram-stable-composer" onSubmit={sendText}><button type="button" className="convogram-stable-icon" aria-label="Add media"', '<form className="convogram-stable-composer" onSubmit={sendText}><button type="button" className="convogram-stable-icon" aria-label="Emoji" onClick={() => setReactionOpen(v => !v)}><Smile size={20}/></button><button type="button" className="convogram-stable-icon" aria-label="Add media"')
+          css_marker = '.convogram-stable-composer-wrap{padding:8px 10px;background:#0b0b0b;border-top:1px solid #202020}'
+          css_add = '.convogram-pinned-banner{width:100%;box-sizing:border-box;border:0;border-bottom:1px solid #242424;background:#111;color:#fff;display:flex;align-items:center;gap:9px;padding:8px 12px;text-align:left}.convogram-pinned-banner:active{background:#191919}.convogram-pinned-banner-icon{width:30px;height:30px;border-radius:9px;background:#182a35;color:#20a4f3;display:grid;place-items:center;flex:0 0 auto}.convogram-pinned-banner-copy{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}.convogram-pinned-banner-copy strong{font-size:11px;color:#20a4f3}.convogram-pinned-banner-copy span{font-size:12px;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.convogram-pinned-banner-arrow{transform:rotate(180deg);color:#777}.convogram-emoji-panel{position:absolute;right:10px;bottom:62px;width:min(300px,calc(100vw - 20px));padding:10px;background:#151515;border:1px solid #303030;border-radius:16px;box-shadow:0 12px 36px rgba(0,0,0,.55);display:grid;grid-template-columns:repeat(5,1fr);gap:5px;z-index:80}.convogram-emoji-button{height:42px;border:0;border-radius:10px;background:#202020;font-size:22px;color:#fff}.convogram-emoji-button:active{background:#303030}.convogram-stable-composer-wrap{padding:8px 10px;background:#0b0b0b;border-top:1px solid #202020;position:relative}'
+          if css_marker not in s: raise SystemExit('css marker not found')
+          s = s.replace(css_marker, css_add, 1)
+          p.write_text(s)
+          PY
+      - name: Validate build
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Commit patched chat
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/MessagesPanelOriginal.jsx
+          git commit -m 'Add pinned message banner and emoji panel' || exit 0
+          git push
+          rm -f .github/workflows/add-chat-features.yml
+          git add .github/workflows/add-chat-features.yml
+          git commit -m 'Remove one-time chat feature patch workflow' || true
+          git push || true
