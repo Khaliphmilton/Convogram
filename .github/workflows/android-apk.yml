@@ -30,6 +30,12 @@ jobs:
           grep -q 'Unable to sign in right now' src/main.jsx
           grep -q 'class ConvogramErrorBoundary' src/main.jsx
           ! grep -q 'Loading your social world' src/main.jsx
+      - name: Write build version manifest
+        env:
+          ANDROID_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          mkdir -p public
+          printf '{"version":"%s","releasedAt":"%s"}\n' "$ANDROID_VERSION_NAME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > public/app-version.json
       - name: Build web app
         run: npm run build
       - name: Setup Java 21
