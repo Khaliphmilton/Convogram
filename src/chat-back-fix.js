@@ -1,33 +1,50 @@
 import { App as CapacitorApp } from "@capacitor/app";
 
 const findChatBackButton = () => document.querySelector(".chat-back-button");
+const findGroupChatBackButton = () => document.querySelector(".group-chat-back");
 
-const closeOpenChat = () => {
-  const button = findChatBackButton();
-  if (!button) return false;
-  button.click();
-  return true;
+const closeOpenNestedScreen = () => {
+  const chatButton = findChatBackButton();
+  if (chatButton) {
+    chatButton.click();
+    return true;
+  }
+  const groupButton = findGroupChatBackButton();
+  if (groupButton) {
+    groupButton.click();
+    return true;
+  }
+  return false;
 };
 
-// Used by index.html's capture-phase popstate guard. Chat navigation always
-// gets first priority over the global page navigation stack.
 window.__convogramChatBack = (event) => {
-  if (!findChatBackButton()) return false;
+  if (!closeOpenNestedScreen()) return false;
   event?.preventDefault?.();
-  closeOpenChat();
   return true;
 };
 
-// Native Android back from Capacitor must close an open chat before the app
-// navigation stack can move from Messages to another page.
 let nativeBackListener = null;
-CapacitorApp.addListener("backButton", () => {
-  closeOpenChat();
+CapacitorApp.addListener("backButton", async () => {
+  // Nested screens always get first priority.
+  if (closeOpenNestedScreen()) return;
+
+  // Notifications and other in-app pages are represented by browser history.
+  const state = window.history.state;
+  if (state?.overlay || state?.page) {
+    window.history.back();
+    return;
+  }
+
+  // At Convogram's root page, let Android perform its normal app-exit action.
+  try {
+    await CapacitorApp.exitApp();
+  } catch (_) {
+    window.history.back();
+  }
 }).then((listener) => {
   nativeBackListener = listener;
 }).catch(() => {});
 
-// Keep the hook clean across hot reloads.
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     try { nativeBackListener?.remove?.(); } catch (_) {}
