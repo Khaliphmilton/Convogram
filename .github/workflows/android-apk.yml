@@ -57,6 +57,11 @@ jobs:
         run: node scripts/configure-firebase-android.mjs
       - name: Add Android permissions
         run: node scripts/add-android-permissions.mjs
+      - name: Verify media-call native bridge
+        run: |
+          set -e
+          test -f android/app/src/main/java/com/convogram/app/ConvogramMediaPermissionsPlugin.java
+          grep -q 'ConvogramMediaPermissionsPlugin' android/app/src/main/java/com/convogram/app/MainActivity.java
       - name: Install SVG build tool
         run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
       - name: Generate Convogram Android branding
