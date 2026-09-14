@@ -20,75 +20,33 @@
       #convogram-splash h1{margin:0;font-size:30px;letter-spacing:-.04em;font-weight:800}
       #convogram-splash .company{position:absolute;bottom:48px;font-size:12px;font-weight:800;letter-spacing:.24em;color:rgba(255,255,255,.72)}
       #convogram-splash .tagline{position:absolute;bottom:27px;font-size:9px;letter-spacing:.12em;color:rgba(255,255,255,.34)}
-
-      /* Emoji picker layout fix: size the outer panel, then let emoji-picker-react
-         manage its own responsive grid. Do not replace its internal list layout. */
-      .messages-panel.chat-open .convogram-emoji-panel{
-        position:absolute!important;
-        left:10px!important;
-        right:10px!important;
-        bottom:calc(100% + 8px)!important;
-        width:auto!important;
-        max-width:none!important;
-        height:min(360px,52vh)!important;
-        min-height:240px!important;
-        padding:0!important;
-        box-sizing:border-box!important;
-        display:block!important;
-        overflow:hidden!important;
-        z-index:80!important;
-      }
-      .messages-panel.chat-open .convogram-emoji-panel .EmojiPickerReact,
-      .messages-panel.chat-open .convogram-emoji-panel aside.EmojiPickerReact{
-        width:100%!important;
-        max-width:none!important;
-        min-width:0!important;
-        height:100%!important;
-        min-height:0!important;
-        box-sizing:border-box!important;
-        --epr-emoji-size:30px;
-        --epr-emoji-padding:4px;
-        --epr-horizontal-padding:8px;
-        --epr-picker-border-radius:14px;
-      }
-      .messages-panel.chat-open .convogram-emoji-panel .epr-main,
-      .messages-panel.chat-open .convogram-emoji-panel .epr-body,
-      .messages-panel.chat-open .convogram-emoji-panel .epr-emoji-category-content{
-        width:100%!important;
-        max-width:none!important;
-        min-width:0!important;
-        box-sizing:border-box!important;
-      }
-      .messages-panel.chat-open .convogram-emoji-panel .epr-body{
-        overflow-x:hidden!important;
-      }
-      @media(max-width:420px){
-        .messages-panel.chat-open .convogram-emoji-panel{
-          left:6px!important;
-          right:6px!important;
-          height:min(340px,50vh)!important;
-          min-height:220px!important;
-        }
-        .messages-panel.chat-open .convogram-emoji-panel .EmojiPickerReact,
-        .messages-panel.chat-open .convogram-emoji-panel aside.EmojiPickerReact{
-          --epr-emoji-size:28px;
-          --epr-emoji-padding:3px;
-          --epr-horizontal-padding:6px;
-        }
-      }
+      .messages-panel.chat-open .convogram-emoji-panel{position:absolute!important;left:10px!important;right:10px!important;bottom:calc(100% + 8px)!important;width:auto!important;max-width:none!important;height:min(360px,52vh)!important;min-height:240px!important;padding:0!important;box-sizing:border-box!important;display:block!important;overflow:hidden!important;z-index:80!important}
+      .messages-panel.chat-open .convogram-emoji-panel .EmojiPickerReact,.messages-panel.chat-open .convogram-emoji-panel aside.EmojiPickerReact{width:100%!important;max-width:none!important;min-width:0!important;height:100%!important;min-height:0!important;box-sizing:border-box!important;--epr-emoji-size:30px;--epr-emoji-padding:4px;--epr-horizontal-padding:8px;--epr-picker-border-radius:14px}
+      .messages-panel.chat-open .convogram-emoji-panel .epr-main,.messages-panel.chat-open .convogram-emoji-panel .epr-body,.messages-panel.chat-open .convogram-emoji-panel .epr-emoji-category-content{width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box!important}
+      .messages-panel.chat-open .convogram-emoji-panel .epr-body{overflow-x:hidden!important}
+      @media(max-width:420px){.messages-panel.chat-open .convogram-emoji-panel{left:6px!important;right:6px!important;height:min(340px,50vh)!important;min-height:220px!important}.messages-panel.chat-open .convogram-emoji-panel .EmojiPickerReact,.messages-panel.chat-open .convogram-emoji-panel aside.EmojiPickerReact{--epr-emoji-size:28px;--epr-emoji-padding:3px;--epr-horizontal-padding:6px}}
     </style>
     <title>Convogram</title>
   </head>
   <body>
-    <div id="convogram-splash" aria-label="Khaliph Industries — Convogram">
-      <img class="splash-icon" src="/convogram-icon.svg" alt="Convogram" />
-      <h1>Convogram</h1>
-      <div class="company">KHALIPH INDUSTRIES</div>
-      <div class="tagline">TECHNOLOGY • SOCIAL • COMMUNITY</div>
-    </div>
+    <div id="convogram-splash" aria-label="Khaliph Industries — Convogram"><img class="splash-icon" src="/convogram-icon.svg" alt="Convogram" /><h1>Convogram</h1><div class="company">KHALIPH INDUSTRIES</div><div class="tagline">TECHNOLOGY • SOCIAL • COMMUNITY</div></div>
     <div id="root"></div>
     <script>
       window.addEventListener("popstate", (event) => {
+        const picker = document.querySelector(".convogram-emoji-panel");
+        const toggle = document.querySelector(".convogram-emoji-toggle.active") || document.querySelector(".convogram-emoji-toggle");
+        if (picker && toggle) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          toggle.click();
+          return;
+        }
+        if (window.__convogramIgnoreNextPop) {
+          window.__convogramIgnoreNextPop = false;
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
         if (typeof window.__convogramChatBack === "function") {
           const handled = window.__convogramChatBack(event);
           if (handled) event.stopImmediatePropagation();
