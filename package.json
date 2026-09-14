@@ -11,24 +11,24 @@
     "mobile:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor-community/media": "^9.1.0",
     "@capacitor/app": "latest",
     "@capacitor/camera": "latest",
     "@capacitor/haptics": "latest",
     "@capacitor/local-notifications": "latest",
     "@capacitor/push-notifications": "latest",
     "@capacitor/status-bar": "latest",
-    "@capacitor-community/media": "^9.1.0",
     "@supabase/supabase-js": "latest",
-    "emoji-picker-react": "latest",
+    "emoji-picker-react": "^4.22.2",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
-    "@capacitor/cli": "latest",
     "@capacitor/android": "latest",
+    "@capacitor/cli": "latest",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vite": "latest"
   }
 }
