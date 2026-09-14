@@ -109,3 +109,70 @@
     bottom: calc(58px + max(env(safe-area-inset-bottom, 0px), 24px) + 11px) !important;
   }
 }
+
+/* ================================================================
+   Android system-bar boundaries — app-wide
+   Keep Convogram content below the Android status bar and above the
+   Android navigation bar on small screens. Do not hide or draw over
+   either system area.
+   ================================================================ */
+@media (max-width: 820px) {
+  html, body, #root {
+    width: 100% !important;
+    min-height: 100dvh !important;
+  }
+
+  .app {
+    min-height: 100dvh !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* The Convogram header itself is the top content boundary. */
+  .app > .topbar {
+    top: 0 !important;
+    height: calc(56px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    min-height: calc(56px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    padding-top: max(env(safe-area-inset-top, 0px), 24px) !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+  }
+
+  .layout {
+    min-height: 0 !important;
+  }
+
+  .content {
+    padding-bottom: calc(80px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+  }
+
+  .mobile-nav {
+    bottom: 0 !important;
+    padding-bottom: calc(6px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+  }
+
+  /* Full-screen chat still respects Android's status bar at the top. */
+  .messages-panel.chat-open > .chat-window .chat-head {
+    height: calc(66px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    min-height: calc(66px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    max-height: calc(66px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    padding-top: max(env(safe-area-inset-top, 0px), 24px) !important;
+    box-sizing: border-box !important;
+  }
+
+  .messages-panel.chat-open > .chat-window .message-composer {
+    bottom: calc(max(env(safe-area-inset-bottom, 0px), 24px) + 11px) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .app > .topbar {
+    height: calc(56px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    min-height: calc(56px + max(env(safe-area-inset-top, 0px), 24px)) !important;
+    padding-top: max(env(safe-area-inset-top, 0px), 24px) !important;
+  }
+
+  .content {
+    padding-bottom: calc(82px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
+  }
+}
