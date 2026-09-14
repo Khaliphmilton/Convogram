@@ -23,13 +23,13 @@ jobs:
           p=Path('src/components/MessagesPanelOriginal.jsx')
           s=p.read_text()
           if 'from "emoji-picker-react"' not in s:
-              s=s.replace('import { VerifiedBadge } from "./VerifiedBadge";', 'import { VerifiedBadge } from "./VerifiedBadge";\nimport EmojiPicker from "emoji-picker-react";')
-          # Use the existing picker state when present; otherwise add it without changing any other chat state.
-          if 'const [emojiOpen' not in s:
-              anchor='const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 });'
-              if anchor in s:
-                  s=s.replace(anchor, anchor[:-2] + ', [emojiOpen, setEmojiOpen] = useState(false);', 1)
-          # Replace the existing emoji panel safely, including nested divs.
+              s=s.replace('import { VerifiedBadge } from "./VerifiedBadge";', 'import { VerifiedBadge } from "./VerifiedBadge";\nimport EmojiPicker from "emoji-picker-react";', 1)
+          if 'const [emojiOpen, setEmojiOpen]' not in s:
+              anchor='const [swipe, setSwipe] = useState({ id: null, x: 0 });'
+              if anchor not in s:
+                  raise SystemExit('swipe state marker missing')
+              s=s.replace(anchor, anchor+'\n  const [emojiOpen, setEmojiOpen] = useState(false);', 1)
+          # Replace only the emoji panel JSX, handling nested divs safely.
           marker='<div className="convogram-emoji-panel"'
           start=s.find(marker)
           if start < 0:
@@ -44,9 +44,8 @@ jobs:
                   depth -= 1; i=b+6
                   if depth == 0:
                       end=i; break
-          panel='<div className="convogram-emoji-panel"><EmojiPicker onEmojiClick={(emojiData) => { setDraft(d => d + emojiData.emoji); requestAnimationFrame(() => composerRef.current?.focus()); }} width="100%" height="100%" previewConfig={{ showPreview: false }} skinTonesDisabled={false} searchDisabled={false} lazyLoadEmojis={true} /></div>'
+          panel='<div className="convogram-emoji-panel" role="dialog" aria-label="Emoji picker"><EmojiPicker onEmojiClick={(emojiData) => { setDraft(d => d + emojiData.emoji); requestAnimationFrame(() => composerRef.current?.focus()); }} width="100%" height="100%" previewConfig={{ showPreview: false }} skinTonesDisabled={false} searchDisabled={false} lazyLoadEmojis={true} /></div>'
           s=s[:start]+panel+s[end:]
-          # Ensure the picker button remains only an emoji toggle immediately before the media button.
           if 'aria-label="Open emoji picker"' not in s:
               needle='<button type="button" className="convogram-stable-icon" aria-label="Add media"'
               if needle not in s: raise SystemExit('media button marker missing')
