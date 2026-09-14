@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { createRoot } from "react-dom/client";
 import { Phone, Video, PhoneOff, Mic, MicOff, VideoOff, Volume2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -6,6 +7,23 @@ import { registerCallPush } from "../lib/push";
 import "./CallOverlay.css";
 
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }];
+const ConvogramMediaPermissions = registerPlugin("ConvogramMediaPermissions");
+
+async function ensureNativeMediaPermissions(type) {
+  if (Capacitor.getPlatform() !== "android") return;
+  const required = type === "video" ? ["camera", "microphone"] : ["microphone"];
+  try {
+    const state = await ConvogramMediaPermissions.checkPermissions();
+    const missing = required.filter((alias) => state?.[alias] !== "granted");
+    if (missing.length) await ConvogramMediaPermissions.requestPermissions({ permissions: missing });
+    const after = await ConvogramMediaPermissions.checkPermissions();
+    const stillMissing = required.filter((alias) => after?.[alias] !== "granted");
+    if (stillMissing.length) throw new Error("Microphone/camera permission was denied.");
+  } catch (error) {
+    if (error?.message === "Microphone/camera permission was denied.") throw error;
+    throw new Error("Could not obtain microphone/camera permission.");
+  }
+}
 function makeCallId() { return crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`; }
 function waitForIceGathering(pc) { return new Promise((resolve) => { if (pc.iceGatheringState === "complete") return resolve(); const done = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", done); resolve(); } }; pc.addEventListener("icegatheringstatechange", done); setTimeout(() => { pc.removeEventListener("icegatheringstatechange", done); resolve(); }, 4000); }); }
 
@@ -34,7 +52,7 @@ export function CallOverlay({ conversationId = null, userId, remoteUserId = null
 
   async function signal(payload, targetUserId) { if (!supabase || !targetUserId) return; const channel = channelRef.current; if (channel) await channel.send({ type: "broadcast", event: "signal", payload: { ...payload, senderId: userId, toUserId: targetUserId } }); }
   function createPeer(callId, type, peerId) { const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS }); pc.onicecandidate = (event) => { if (event.candidate) signal({ kind: "ice", callId, candidate: event.candidate }, peerId); }; pc.ontrack = (event) => { if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream(); (event.streams?.[0]?.getTracks() || [event.track]).forEach((track) => { if (!remoteStreamRef.current.getTracks().some((t) => t.id === track.id)) remoteStreamRef.current.addTrack(track); }); if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current; }; pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") setError("The call connection failed."); }; pcRef.current = pc; return pc; }
-  async function getLocalMedia(type) { const constraints = type === "video" ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } } : { audio: true }; const stream = await navigator.mediaDevices.getUserMedia(constraints); localStreamRef.current = stream; if (localVideoRef.current) localVideoRef.current.srcObject = stream; return stream; }
+  async function getLocalMedia(type) { await ensureNativeMediaPermissions(type); const constraints = type === "video" ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } } : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }; const stream = await navigator.mediaDevices.getUserMedia(constraints); localStreamRef.current = stream; if (localVideoRef.current) localVideoRef.current.srcObject = stream; return stream; }
   async function startCall(type, peerId, peerName, targetConversationId) { if (!peerId || !targetConversationId) { setError("This conversation has no other participant to call."); return; } if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) { setError("Calling is not supported by this browser."); return; } try { setError(""); const callId = makeCallId(); const stream = await getLocalMedia(type); const pc = createPeer(callId, type, peerId); stream.getTracks().forEach((track) => pc.addTrack(track, stream)); const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await waitForIceGathering(pc); targetRef.current = { conversationId: targetConversationId, remoteUserId: peerId, remoteName: peerName }; setCall({ callId, type, status: "calling", remoteName: peerName, remoteUserId: peerId, conversationId: targetConversationId }); await supabase.from("call_sessions").insert({ call_id: callId, conversation_id: targetConversationId, caller_id: userId, callee_id: peerId, call_type: type, offer: pc.localDescription?.toJSON?.() || pc.localDescription, status: "ringing" }); await signal({ kind: "offer", callId, type, offer: pc.localDescription?.toJSON?.() || pc.localDescription, conversationId: targetConversationId, remoteName: peerName }, peerId); supabase.functions.invoke("push-call", { body: { toUserId: peerId, callId, type, conversationId: targetConversationId, callerName: peerName } }).catch(() => {}); } catch (err) { cleanup(false); setError(err.name === "NotAllowedError" ? "Microphone/camera permission was denied." : err.message || "Could not start the call."); } }
   async function handleSignal(payload) { if (payload.kind === "offer") { if (callRef.current?.callId && callRef.current.callId !== payload.callId) return; setIncoming((current) => current?.callId === payload.callId ? current : { ...payload, fromUserId: payload.senderId, remoteName: payload.remoteName || "Contact" }); return; } if (payload.kind === "answer") { if (!callRef.current || callRef.current.callId !== payload.callId) return; await pcRef.current?.setRemoteDescription(new RTCSessionDescription(payload.answer)); await flushIce(); await supabase.from("call_sessions").update({ status: "answered" }).eq("call_id", payload.callId); setCall((current) => current ? { ...current, status: "connected" } : current); return; } if (payload.kind === "ice") { if (!callRef.current || callRef.current.callId !== payload.callId || !pcRef.current) return; if (pcRef.current.remoteDescription) await pcRef.current.addIceCandidate(payload.candidate); else pendingIceRef.current.push(payload.candidate); return; } if (payload.kind === "hangup") { if (callRef.current?.callId === payload.callId || incoming?.callId === payload.callId) { await supabase.from("call_sessions").update({ status: "ended" }).eq("call_id", payload.callId); cleanup(false); } } }
   async function flushIce() { const pc = pcRef.current; if (!pc?.remoteDescription) return; const queued = pendingIceRef.current.splice(0); for (const candidate of queued) try { await pc.addIceCandidate(candidate); } catch (_) {} }
