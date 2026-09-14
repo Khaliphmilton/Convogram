@@ -1,46 +1,46 @@
-/* Android owns system-bar geometry. The WebView is padded once with the
-   exact WindowInsets by MainActivity, so the chat must not add guessed pixels. */
+/* Android owns system-bar geometry. The WebView is already inside the native
+   safe viewport, so chat uses normal flex flow and never guesses device pixels. */
 const style = document.createElement("style");
 style.id = "convogram-chat-status-bar-fix";
 style.textContent = `
 @media (max-width: 760px) {
-  :root {
-    --convogram-chat-safe-top: 0px;
-    --convogram-chat-safe-bottom: 0px;
-  }
-
   .messages-panel.chat-open > .chat-window > .chat-head {
-    margin-top: 0 !important;
+    position: relative !important;
+    inset: auto !important;
+    margin: 0 !important;
     padding-top: 0 !important;
-    height: 66px !important;
-    min-height: 66px !important;
-    max-height: 66px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     box-sizing: border-box !important;
     align-items: center !important;
-    flex: 0 0 66px !important;
+    flex: 0 0 auto !important;
   }
 
   .messages-panel.chat-open > .chat-window .message-composer {
     position: relative !important;
-    left: auto !important;
-    right: auto !important;
-    bottom: auto !important;
-    height: 68px !important;
-    min-height: 68px !important;
-    max-height: 68px !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     margin: 0 !important;
     box-sizing: border-box !important;
+    flex: 0 0 auto !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
     z-index: 20 !important;
   }
 
   .messages-panel.chat-open > .chat-window .message-stream {
-    padding-bottom: 18px !important;
+    flex: 1 1 auto !important;
     min-height: 0 !important;
+    padding-bottom: 0 !important;
+    overflow-y: auto !important;
   }
 
   .messages-panel.chat-open > .chat-window .reply-banner {
     position: relative !important;
-    bottom: auto !important;
+    inset: auto !important;
   }
 
   .messages-panel.chat-open > .chat-window .convogram-emoji-panel {
