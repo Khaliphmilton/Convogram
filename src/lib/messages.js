@@ -5,15 +5,31 @@ const CHAT_TARGET_KEY = "convogram:open-chat";
 const rememberChat = id => { pendingDirectConversationId = id || null; if (id) { try { sessionStorage.setItem(CHAT_TARGET_KEY, JSON.stringify({ conversationId: id, createdAt: Date.now() })); } catch {} } };
 export function consumePendingDirectConversationId() { let id = pendingDirectConversationId; pendingDirectConversationId = null; if (!id) { try { const raw = sessionStorage.getItem(CHAT_TARGET_KEY); id = raw ? JSON.parse(raw)?.conversationId || null : null; } catch {} } if (id) { try { sessionStorage.removeItem(CHAT_TARGET_KEY); } catch {} } return id; }
 
+const CONVERSATION_COLUMNS = "id,created_by,type,name,avatar_url,created_at,updated_at";
+const MEMBER_COLUMNS = "conversation_id,user_id,role,joined_at,last_read_at,hidden_at";
+const MESSAGE_PREVIEW_COLUMNS = "id,conversation_id,sender_id,content,message_type,created_at,is_deleted";
+
 export async function getConversations(userId, limit = 50) {
   if (!userId) return [];
-  const { data: memberships, error: membershipError } = await supabase.from("conversation_members").select("conversation_id,joined_at,role,last_read_at,hidden_at").eq("user_id", userId).is("hidden_at", null).order("joined_at", { ascending: false }).limit(limit);
+  const { data: memberships, error: membershipError } = await supabase
+    .from("conversation_members")
+    .select(MEMBER_COLUMNS)
+    .eq("user_id", userId)
+    .is("hidden_at", null)
+    .order("joined_at", { ascending: false })
+    .limit(limit);
   if (membershipError) throw membershipError;
+
   const rows = memberships || [];
   const ids = rows.map(r => r.conversation_id).filter(Boolean);
   if (!ids.length) return [];
 
-  const { data: conversationRows, error: conversationError } = await supabase.from("conversations").select("*").in("id", ids);
+  // Explicit columns are intentional: the conversations table does not have
+  // last_message_at. Never ask PostgREST for that nonexistent column.
+  const { data: conversationRows, error: conversationError } = await supabase
+    .from("conversations")
+    .select(CONVERSATION_COLUMNS)
+    .in("id", ids);
   if (conversationError) throw conversationError;
   const conversationById = new Map((conversationRows || []).map(c => [c.id, c]));
 
@@ -33,11 +49,14 @@ export async function getConversations(userId, limit = 50) {
   }
   const profileById = new Map(profiles.map(p => [p.id, p]));
 
-  // The chat list must not disappear just because preview/unread data is unavailable.
-  // Load messages as optional enrichment only.
   let messageRows = [];
   try {
-    const result = await supabase.from("messages").select("id,conversation_id,sender_id,content,message_type,created_at,is_deleted").in("conversation_id", ids).order("created_at", { ascending: false }).limit(500);
+    const result = await supabase
+      .from("messages")
+      .select(MESSAGE_PREVIEW_COLUMNS)
+      .in("conversation_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(500);
     if (!result.error) messageRows = result.data || [];
   } catch (_) {}
 
@@ -45,7 +64,7 @@ export async function getConversations(userId, limit = 50) {
   for (const message of messageRows) if (!latestByConversation.has(message.conversation_id)) latestByConversation.set(message.conversation_id, message);
 
   return rows.map(row => {
-    const conversation = { ...(conversationById.get(row.conversation_id) || {}), ...row };
+    const conversation = { ...(conversationById.get(row.conversation_id) || { id: row.conversation_id, type: "direct" }), ...row };
     const other = memberRows.find(m => m.conversation_id === row.conversation_id && m.user_id !== userId);
     conversation._direct_profile = other ? profileById.get(other.user_id) || null : null;
     conversation._latest_message = latestByConversation.get(row.conversation_id) || null;
@@ -65,11 +84,11 @@ export async function getDirectConversation(userId, otherUserId) {
   if (mineError) throw mineError;
   const target = (mine || [])[0]; if (!target) return null;
   if (target.hidden_at) { const { error: restoreError } = await supabase.from("conversation_members").update({ hidden_at: null }).eq("conversation_id", target.conversation_id).eq("user_id", userId); if (restoreError) throw restoreError; }
-  const { data: conversation, error: conversationError } = await supabase.from("conversations").select("*").eq("id", target.conversation_id).single(); if (conversationError) throw conversationError;
+  const { data: conversation, error: conversationError } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", target.conversation_id).single(); if (conversationError) throw conversationError;
   rememberChat(conversation.id); return conversation;
 }
 
-export async function getConversationDetails(conversationId) { const { data, error } = await supabase.from("conversations").select("*").eq("id", conversationId).single(); if (error) throw error; return data; }
+export async function getConversationDetails(conversationId) { const { data, error } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", conversationId).single(); if (error) throw error; return data; }
 
 export async function getMessages(conversationId, limit = 100, userId = null) {
   const { data, error } = await supabase.from("messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(limit);
@@ -94,8 +113,8 @@ export async function removeMessageReaction(messageId, userId, reaction) { const
 export async function createConversation(createdBy, type = "direct", name = null, avatarUrl = null, memberIds = []) {
   if (!createdBy) throw new Error("You must be signed in to create a conversation.");
   const allMembers = [...new Set([createdBy, ...memberIds].filter(Boolean))]; if (type === "direct" && allMembers.length !== 2) throw new Error("A direct conversation needs exactly two people.");
-  if (type === "direct") { const other = allMembers.find(id => id !== createdBy); if (other) { const { data: otherRows } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", other); const ids = (otherRows || []).map(r => r.conversation_id); if (ids.length) { const { data: mine } = await supabase.from("conversation_members").select("conversation_id,hidden_at").eq("user_id", createdBy).in("conversation_id", ids); const existing = (mine || [])[0]; if (existing) { if (existing.hidden_at) await supabase.from("conversation_members").update({ hidden_at: null }).eq("conversation_id", existing.conversation_id).eq("user_id", createdBy); const { data: conversation } = await supabase.from("conversations").select("*").eq("id", existing.conversation_id).maybeSingle(); rememberChat(existing.conversation_id); return conversation; } } } }
-  const { data, error } = await supabase.from("conversations").insert([{ created_by: createdBy, type, name: name || null, avatar_url: avatarUrl || null }]).select().single(); if (error) throw error;
+  if (type === "direct") { const other = allMembers.find(id => id !== createdBy); if (other) { const { data: otherRows } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", other); const ids = (otherRows || []).map(r => r.conversation_id); if (ids.length) { const { data: mine } = await supabase.from("conversation_members").select("conversation_id,hidden_at").eq("user_id", createdBy).in("conversation_id", ids); const existing = (mine || [])[0]; if (existing) { if (existing.hidden_at) await supabase.from("conversation_members").update({ hidden_at: null }).eq("conversation_id", existing.conversation_id).eq("user_id", createdBy); const { data: conversation } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", existing.conversation_id).maybeSingle(); rememberChat(existing.conversation_id); return conversation; } } } }
+  const { data, error } = await supabase.from("conversations").insert([{ created_by: createdBy, type, name: name || null, avatar_url: avatarUrl || null }]).select(CONVERSATION_COLUMNS).single(); if (error) throw error;
   const { error: memberError } = await supabase.from("conversation_members").insert(allMembers.map(userId => ({ conversation_id: data.id, user_id: userId, role: userId === createdBy ? "owner" : "member" }))); if (memberError) throw memberError;
   if (type === "direct") rememberChat(data.id); return data;
 }
