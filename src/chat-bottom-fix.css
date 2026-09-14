@@ -9,10 +9,13 @@
   }
 
   body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window .message-stream {
-    padding-bottom: 58px !important;
+    /* Keep the last message clear of the composer and Android navigation area. */
+    padding-bottom: calc(58px + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
   }
 
   body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window .message-composer {
-    bottom: 0 !important;
+    /* The chat composer must sit above Android's bottom navigation/gesture area. */
+    bottom: max(env(safe-area-inset-bottom, 0px), 24px) !important;
+    margin-bottom: 0 !important;
   }
 }
