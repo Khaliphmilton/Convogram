@@ -1,125 +1,17 @@
 import { supabase } from "./supabase";
 
-export async function getCommunities(limit = 50) {
-  const { data, error } = await supabase
-    .from("communities")
-    .select(`*, profiles:owner_id(id, username, display_name, avatar_url), community_members(count)`)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data;
-}
-
-export async function getUserCommunities(userId) {
-  const { data, error } = await supabase
-    .from("community_members")
-    .select(`communities(*), role`)
-    .eq("user_id", userId);
-  if (error) throw error;
-  return data?.map((m) => ({ ...m.communities, userRole: m.role }));
-}
-
-export async function getCommunity(communityId) {
-  const { data, error } = await supabase
-    .from("communities")
-    .select(`*, profiles:owner_id(id, username, display_name, avatar_url), community_members(*, profiles:user_id(id, username, display_name, avatar_url))`)
-    .eq("id", communityId)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function getCommunityMembers(communityId) {
-  const { data, error } = await supabase
-    .from("community_members")
-    .select(`id, community_id, user_id, role, joined_at, profiles:user_id(id, username, display_name, avatar_url)`)
-    .eq("community_id", communityId)
-    .order("joined_at", { ascending: true });
-  if (error) throw error;
-  return data || [];
-}
-
-export async function searchCommunityPeople(query, limit = 12) {
-  const q = query.trim();
-  if (!q) return [];
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, username, display_name, avatar_url")
-    .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
-    .limit(limit);
-  if (error) throw error;
-  return data || [];
-}
-
-export async function addCommunityMember(communityId, userId) {
-  const { data, error } = await supabase
-    .from("community_members")
-    .insert([{ community_id: communityId, user_id: userId, role: "member" }])
-    .select(`id, community_id, user_id, role, joined_at, profiles:user_id(id, username, display_name, avatar_url)`)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function removeCommunityMember(communityId, userId) {
-  const { error } = await supabase.from("community_members").delete().eq("community_id", communityId).eq("user_id", userId);
-  if (error) throw error;
-}
-
-export async function setCommunityMemberRole(communityId, userId, role) {
-  const { data, error } = await supabase
-    .from("community_members")
-    .update({ role })
-    .eq("community_id", communityId)
-    .eq("user_id", userId)
-    .select(`id, community_id, user_id, role, joined_at, profiles:user_id(id, username, display_name, avatar_url)`)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function updateCommunity(communityId, changes) {
-  const { data, error } = await supabase.from("communities").update(changes).eq("id", communityId).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function uploadCommunityAvatar(communityId, userId, file) {
-  const ext = file.name?.split(".").pop()?.toLowerCase() || "jpg";
-  const path = `${userId}/${communityId}-${Date.now()}.${ext}`;
-  const { error: uploadError } = await supabase.storage.from("community-avatars").upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" });
-  if (uploadError) throw uploadError;
-  const { data } = supabase.storage.from("community-avatars").getPublicUrl(path);
-  return updateCommunity(communityId, { avatar_url: data.publicUrl });
-}
-
-export async function createCommunity(ownerId, name, description = null, avatarUrl = null) {
-  const { data, error } = await supabase.from("communities").insert([{ owner_id: ownerId, name, description: description || null, avatar_url: avatarUrl || null }]).select().single();
-  if (error) throw error;
-  const { error: memberError } = await supabase.from("community_members").insert([{ community_id: data.id, user_id: ownerId, role: "owner" }]);
-  if (memberError) throw memberError;
-  return data;
-}
-
-export async function joinCommunity(communityId, userId) {
-  const { data, error } = await supabase.from("community_members").insert([{ community_id: communityId, user_id: userId, role: "member" }]).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function leaveCommunity(communityId, userId) {
-  const { error } = await supabase.from("community_members").delete().eq("community_id", communityId).eq("user_id", userId);
-  if (error) throw error;
-}
-
-export async function getCommunityPosts(communityId, limit = 20) {
-  const { data, error } = await supabase.from("community_posts").select(`*, profiles:user_id(id, username, display_name, avatar_url)`).eq("community_id", communityId).order("created_at", { ascending: false }).limit(limit);
-  if (error) throw error;
-  return data;
-}
-
-export async function createCommunityPost(communityId, userId, content, mediaUrl = null, mediaType = null) {
-  const { data, error } = await supabase.from("community_posts").insert([{ community_id: communityId, user_id: userId, content: content || null, media_url: mediaUrl || null, media_type: mediaType || null }]).select(`*, profiles:user_id(id, username, display_name, avatar_url)`).single();
-  if (error) throw error;
-  return data;
-}
+export async function getCommunities(limit = 50) { const { data, error } = await supabase.from("communities").select(`*, profiles:owner_id(id, username, display_name, avatar_url), community_members(count)`).order("created_at", { ascending: false }).limit(limit); if (error) throw error; return data || []; }
+export async function getUserCommunities(userId) { const { data, error } = await supabase.from("community_members").select(`communities(*), role`).eq("user_id", userId); if (error) throw error; return data?.map((m) => ({ ...m.communities, userRole: m.role })) || []; }
+export async function getCommunity(communityId) { const { data, error } = await supabase.from("communities").select(`*, profiles:owner_id(id, username, display_name, avatar_url), community_members(*, profiles:user_id(id, username, display_name, avatar_url))`).eq("id", communityId).single(); if (error) throw error; return data; }
+export async function getCommunityMembers(communityId) { const { data, error } = await supabase.from("community_members").select(`id, community_id, user_id, role, joined_at, profiles:user_id(id, username, display_name, avatar_url)`).eq("community_id", communityId).order("joined_at", { ascending: true }); if (error) throw error; return data || []; }
+export async function searchCommunityPeople(query, limit = 12) { const q = query.trim(); if (!q) return []; const { data, error } = await supabase.from("profiles").select("id, username, display_name, avatar_url").or(`username.ilike.%${q}%,display_name.ilike.%${q}%`).limit(limit); if (error) throw error; return data || []; }
+export async function addCommunityMember(communityId, userId) { const { data, error } = await supabase.rpc("add_community_member", { p_community_id: communityId, p_user_id: userId }); if (error) throw error; return data; }
+export async function removeCommunityMember(communityId, userId) { const { error } = await supabase.rpc("remove_community_member", { p_community_id: communityId, p_user_id: userId }); if (error) throw error; }
+export async function setCommunityMemberRole(communityId, userId, role) { const { data, error } = await supabase.rpc("set_community_member_role", { p_community_id: communityId, p_user_id: userId, p_role: role }); if (error) throw error; return data; }
+export async function updateCommunity(communityId, changes) { const { data, error } = await supabase.from("communities").update(changes).eq("id", communityId).select().single(); if (error) throw error; return data; }
+export async function uploadCommunityAvatar(communityId, userId, file) { const ext = file.name?.split(".").pop()?.toLowerCase() || "jpg"; const path = `${userId}/${communityId}-${Date.now()}.${ext}`; const { error: uploadError } = await supabase.storage.from("community-avatars").upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" }); if (uploadError) throw uploadError; const { data } = supabase.storage.from("community-avatars").getPublicUrl(path); return updateCommunity(communityId, { avatar_url: data.publicUrl }); }
+export async function createCommunity(ownerId, name, description = null, avatarUrl = null) { const { data, error } = await supabase.from("communities").insert([{ owner_id: ownerId, name, description: description || null, avatar_url: avatarUrl || null }]).select().single(); if (error) throw error; const { error: memberError } = await supabase.from("community_members").insert([{ community_id: data.id, user_id: ownerId, role: "owner" }]); if (memberError) throw memberError; return data; }
+export async function joinCommunity(communityId, userId) { const { data, error } = await supabase.from("community_members").insert([{ community_id: communityId, user_id: userId, role: "member" }]).select().single(); if (error) throw error; return data; }
+export async function leaveCommunity(communityId, userId) { const { error } = await supabase.from("community_members").delete().eq("community_id", communityId).eq("user_id", userId); if (error) throw error; }
+export async function getCommunityPosts(communityId, limit = 20) { const { data, error } = await supabase.from("community_posts").select(`*, profiles:user_id(id, username, display_name, avatar_url)`).eq("community_id", communityId).order("created_at", { ascending: false }).limit(limit); if (error) throw error; return data || []; }
+export async function createCommunityPost(communityId, userId, content, mediaUrl = null, mediaType = null) { const { data, error } = await supabase.from("community_posts").insert([{ community_id: communityId, user_id: userId, content: content || null, media_url: mediaUrl || null, media_type: mediaType || null }]).select(`*, profiles:user_id(id, username, display_name, avatar_url)`).single(); if (error) throw error; return data; }
