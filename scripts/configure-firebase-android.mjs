@@ -5,21 +5,43 @@ const b64 = process.env.GOOGLE_SERVICES_JSON_B64;
 const appGradle = "android/app/build.gradle";
 const rootGradle = "android/build.gradle";
 
+function parseFirebaseConfig(value, sourceName) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+
+  // Accept a normal JSON secret even if it was accidentally placed in the B64 secret.
+  if (text.startsWith("{")) {
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      throw new Error(`${sourceName} contains invalid JSON: ${error.message}`);
+    }
+  }
+
+  // Accept standard Base64, Base64 with whitespace/newlines, and Base64URL.
+  const normalized = text.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) || normalized.length % 4 === 1) {
+    throw new Error(`${sourceName} is neither valid JSON nor valid Base64`);
+  }
+
+  try {
+    const decoded = Buffer.from(normalized, "base64").toString("utf8").replace(/^\uFEFF/, "").trim();
+    return JSON.parse(decoded);
+  } catch (error) {
+    throw new Error(`${sourceName} is not valid Base64-encoded Firebase JSON: ${error.message}`);
+  }
+}
+
 let firebaseConfig = null;
-if (rawJson) {
-  try {
-    firebaseConfig = JSON.parse(rawJson);
-  } catch (error) {
-    console.error("GOOGLE_SERVICES_JSON is not valid JSON:", error.message);
-    process.exit(1);
+try {
+  if (rawJson?.trim()) {
+    firebaseConfig = parseFirebaseConfig(rawJson, "GOOGLE_SERVICES_JSON");
+  } else if (b64?.trim()) {
+    firebaseConfig = parseFirebaseConfig(b64, "GOOGLE_SERVICES_JSON_B64");
   }
-} else if (b64) {
-  try {
-    firebaseConfig = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
-  } catch (error) {
-    console.error("GOOGLE_SERVICES_JSON_B64 is not valid Base64-encoded JSON:", error.message);
-    process.exit(1);
-  }
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
 }
 
 if (!firebaseConfig) {
