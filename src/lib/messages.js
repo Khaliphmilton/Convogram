@@ -21,7 +21,6 @@ export async function getConversations(userId, limit = 50) {
     .order("joined_at", { ascending: false })
     .limit(limit);
   if (membershipError) throw membershipError;
-
   const rows = memberships || [];
   const ids = rows.map(r => r.conversation_id).filter(Boolean);
   if (!ids.length) return [];
@@ -79,16 +78,24 @@ export async function getDirectConversation(userId, otherUserId) {
   if (!userId || !otherUserId || userId === otherUserId) return null;
   const { data: otherMemberships, error } = await supabase.from("conversation_members").select("conversation_id,user_id").eq("user_id", otherUserId);
   if (error) throw error;
-  const ids = (otherMemberships || []).map(r => r.conversation_id).filter(Boolean); if (!ids.length) return null;
+  const ids = (otherMemberships || []).map(r => r.conversation_id).filter(Boolean);
+  if (!ids.length) return null;
   const { data: mine, error: mineError } = await supabase.from("conversation_members").select("conversation_id,hidden_at").eq("user_id", userId).in("conversation_id", ids);
   if (mineError) throw mineError;
-  const target = (mine || [])[0]; if (!target) return null;
+  const target = (mine || [])[0];
+  if (!target) return null;
   if (target.hidden_at) { const { error: restoreError } = await supabase.from("conversation_members").update({ hidden_at: null }).eq("conversation_id", target.conversation_id).eq("user_id", userId); if (restoreError) throw restoreError; }
-  const { data: conversation, error: conversationError } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", target.conversation_id).single(); if (conversationError) throw conversationError;
-  rememberChat(conversation.id); return conversation;
+  const { data: conversation, error: conversationError } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", target.conversation_id).single();
+  if (conversationError) throw conversationError;
+  rememberChat(conversation.id);
+  return conversation;
 }
 
-export async function getConversationDetails(conversationId) { const { data, error } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", conversationId).single(); if (error) throw error; return data; }
+export async function getConversationDetails(conversationId) {
+  const { data, error } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", conversationId).single();
+  if (error) throw error;
+  return data;
+}
 
 export async function getMessages(conversationId, limit = 100, userId = null) {
   if (!conversationId) return [];
@@ -101,11 +108,6 @@ export async function getMessages(conversationId, limit = 100, userId = null) {
   if (error) throw error;
 
   const messages = data || [];
-  if (!messages.length) {
-    if (userId) { try { await markConversationAsRead(conversationId, userId); } catch (_) {} }
-    return messages;
-  }
-
   const senderIds = [...new Set(messages.map(m => m.sender_id).filter(Boolean))];
   if (senderIds.length) {
     try {
@@ -125,7 +127,10 @@ export async function getMessages(conversationId, limit = 100, userId = null) {
   }
 
   try {
-    const { data: reactions } = await supabase.from("message_reactions").select("id,message_id,user_id,reaction").in("message_id", messages.map(m => m.id));
+    const { data: reactions } = await supabase
+      .from("message_reactions")
+      .select("id,message_id,user_id,reaction")
+      .in("message_id", messages.map(m => m.id));
     const byMessage = new Map();
     (reactions || []).forEach(r => {
       const bucket = byMessage.get(r.message_id) || [];
@@ -149,15 +154,35 @@ export async function sendMessage(conversationId, senderId, content, messageType
 export async function deleteMessage(messageId) { const { data, error } = await supabase.from("messages").update({ is_deleted: true, content: null, media_url: null, updated_at: new Date().toISOString() }).eq("id", messageId).select(MESSAGE_COLUMNS).single(); if (error) throw error; return data; }
 export async function deleteConversationForUser(conversationId, userId) { const { error } = await supabase.from("conversation_members").update({ hidden_at: new Date().toISOString() }).eq("conversation_id", conversationId).eq("user_id", userId); if (error) throw error; }
 export function subscribeToConversation(conversationId, onInsert, onUpdate) { const channel = supabase.channel(`convogram-chat-${conversationId}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, payload => onInsert(payload.new)).on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, payload => onUpdate?.(payload.new)).subscribe(); return () => supabase.removeChannel(channel); }
-export async function markMessageAsRead(messageId, userId) { const { data, error } = await supabase.from("read_receipts").insert([{ message_id: messageId, user_id: userId, }).select().single(); if (error && error.code !== "23505") throw error; const { data: message } = await supabase.from("messages").select("conversation_id").eq("id", messageId).maybeSingle(); if (message?.conversation_id) await markConversationAsRead(message.conversation_id, userId); return data; }
+export async function markMessageAsRead(messageId, userId) { const { data, error } = await supabase.from("read_receipts").insert([{ message_id: messageId, user_id: userId }]).select().single(); if (error && error.code !== "23505") throw error; const { data: message } = await supabase.from("messages").select("conversation_id").eq("id", messageId).maybeSingle(); if (message?.conversation_id) await markConversationAsRead(message.conversation_id, userId); return data; }
 export async function markConversationAsRead(conversationId, userId) { if (!conversationId || !userId) return; const { error } = await supabase.from("conversation_members").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", conversationId).eq("user_id", userId); if (error) throw error; }
 export async function addMessageReaction(messageId, userId, reaction) { const { data, error } = await supabase.from("message_reactions").insert([{ message_id: messageId, user_id: userId, reaction }]).select().single(); if (error) throw error; return data; }
 export async function removeMessageReaction(messageId, userId, reaction) { const { error } = await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", userId).eq("reaction", reaction); if (error) throw error; }
 export async function createConversation(createdBy, type = "direct", name = null, avatarUrl = null, memberIds = []) {
   if (!createdBy) throw new Error("You must be signed in to create a conversation.");
-  const allMembers = [...new Set([createdBy, ...memberIds].filter(Boolean))]; if (type === "direct" && allMembers.length !== 2) throw new Error("A direct conversation needs exactly two people.");
-  if (type === "direct") { const other = allMembers.find(id => id !== createdBy); if (other) { const { data: otherRows } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", other); const ids = (otherRows || []).map(r => r.conversation_id); if (ids.length) { const { data: mine } = await supabase.from("conversation_members").select("conversation_id,hidden_at").eq("user_id", createdBy).in("conversation_id", ids); const existing = (mine || [])[0]; if (existing) { if (existing.hidden_at) await supabase.from("conversation_members").update({ hidden_at: null }).eq("conversation_id", existing.conversation_id).eq("user_id", createdBy); const { data: conversation } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", existing.conversation_id).maybeSingle(); rememberChat(existing.conversation_id); return conversation; } } } }
-  const { data, error } = await supabase.from("conversations").insert([{ created_by: createdBy, type, name: name || null, avatar_url: avatarUrl || null }]).select(CONVERSATION_COLUMNS).single(); if (error) throw error;
-  const { error: memberError } = await supabase.from("conversation_members").insert(allMembers.map(userId => ({ conversation_id: data.id, user_id: userId, role: userId === createdBy ? "owner" : "member" }))); if (memberError) throw memberError;
-  if (type === "direct") rememberChat(data.id); return data;
+  const allMembers = [...new Set([createdBy, ...memberIds].filter(Boolean))];
+  if (type === "direct" && allMembers.length !== 2) throw new Error("A direct conversation needs exactly two people.");
+  if (type === "direct") {
+    const other = allMembers.find(id => id !== createdBy);
+    if (other) {
+      const { data: otherRows } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", other);
+      const ids = (otherRows || []).map(r => r.conversation_id);
+      if (ids.length) {
+        const { data: mine } = await supabase.from("conversation_members").select("conversation_id,hidden_at").eq("user_id", createdBy).in("conversation_id", ids);
+        const existing = (mine || [])[0];
+        if (existing) {
+          if (existing.hidden_at) await supabase.from("conversation_members").update({ hidden_at: null }).eq("conversation_id", existing.conversation_id).eq("user_id", createdBy);
+          const { data: conversation } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", existing.conversation_id).maybeSingle();
+          rememberChat(existing.conversation_id);
+          return conversation;
+        }
+      }
+    }
+  }
+  const { data, error } = await supabase.from("conversations").insert([{ created_by: createdBy, type, name: name || null, avatar_url: avatarUrl || null }]).select(CONVERSATION_COLUMNS).single();
+  if (error) throw error;
+  const { error: memberError } = await supabase.from("conversation_members").insert(allMembers.map(userId => ({ conversation_id: data.id, user_id: userId, role: userId === createdBy ? "owner" : "member" })));
+  if (memberError) throw memberError;
+  if (type === "direct") rememberChat(data.id);
+  return data;
 }
