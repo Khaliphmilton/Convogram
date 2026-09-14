@@ -75,6 +75,7 @@ if (fs.existsSync(mainActivityPath)) {
     'import android.os.Build;',
     'import android.view.View;',
     'import android.view.Window;',
+    'import androidx.core.graphics.Insets;',
     'import androidx.core.view.ViewCompat;',
     'import androidx.core.view.WindowCompat;',
     'import androidx.core.view.WindowInsetsCompat;'
@@ -109,7 +110,7 @@ if (fs.existsSync(mainActivityPath)) {
         if (getBridge() == null || getBridge().getWebView() == null) return;
         View webView = getBridge().getWebView();
         ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
-            WindowInsetsCompat.Insets bars = insets.getInsets(
+            Insets bars = insets.getInsets(
                 WindowInsetsCompat.Type.statusBars()
                     | WindowInsetsCompat.Type.navigationBars()
                     | WindowInsetsCompat.Type.displayCutout()
