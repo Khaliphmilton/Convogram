@@ -1,0 +1,29 @@
+name: Repair chat build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  repair:
+    if: github.sha == 'fffdeda81776a38dc707611b81407afe7b7e19f6'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore last known-good chat renderer
+        run: |
+          git checkout 7f5e31b02d2deb6c2fa5a815c6b3a348ce26b463 -- src/components/MessagesPanelOriginal.jsx
+      - name: Remove temporary syntax-fix workflow
+        run: |
+          rm -f .github/workflows/fix-chat-syntax.yml
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/MessagesPanelOriginal.jsx .github/workflows/fix-chat-syntax.yml
+          git diff --cached --quiet || git commit -m 'Fix chat renderer build syntax'
+          git push
