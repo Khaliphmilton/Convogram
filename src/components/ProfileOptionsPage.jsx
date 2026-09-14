@@ -30,7 +30,23 @@ function saveAccount(account) {
   const id = String(account.id);
   const email = String(account.email || "").trim().toLowerCase();
   const current = readSavedAccounts().filter((item) => item.id !== id && (!email || String(item.email || "").trim().toLowerCase() !== email));
-  writeSavedAccounts([{ id, display_name: account.display_name || "Convogram User", username: account.username || "user", email, session: account.session || null }, ...current]);
+  writeSavedAccounts([{ id, display_name: account.display_name || "Convogram User", username: account.username || "user", email, avatar_url: account.avatar_url || null, session: account.session || null }, ...current]);
+}
+
+async function enrichAccountAvatars(accounts) {
+  const ids = accounts.map((account) => account?.id).filter(Boolean);
+  if (!ids.length) return accounts;
+  try {
+    const { data, error } = await supabase.from("profiles").select("id,avatar_url,display_name,username").in("id", ids);
+    if (error) return accounts;
+    const profiles = new Map((data || []).map((p) => [p.id, p]));
+    const enriched = accounts.map((account) => {
+      const p = profiles.get(account.id);
+      return p ? { ...account, avatar_url: p.avatar_url || account.avatar_url || null, display_name: p.display_name || account.display_name, username: p.username || account.username } : account;
+    });
+    writeSavedAccounts(enriched);
+    return enriched;
+  } catch { return accounts; }
 }
 
 export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSaved, onEditProfile, onSettings, onLogout }) {
@@ -51,9 +67,10 @@ export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSa
       try { const { data } = await supabase.auth.getSession(); session = data?.session || null; } catch {}
       if (cancelled) return;
       const authUser = session?.user;
-      const account = { id: authUser?.id || profile?.id, display_name: displayName, username, email: authUser?.email || email || "", session };
+      const account = { id: authUser?.id || profile?.id, display_name: displayName, username, email: authUser?.email || email || "", avatar_url: profile?.avatar_url || null, session };
       if (account.id && session) saveAccount(account);
-      setSavedAccounts(readSavedAccounts());
+      const accounts = readSavedAccounts();
+      setSavedAccounts(await enrichAccountAvatars(accounts));
       try {
         if (sessionStorage.getItem("convogram:open-switch-account") === "1") {
           sessionStorage.removeItem("convogram:open-switch-account");
@@ -63,10 +80,10 @@ export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSa
     }
     syncCurrentAccount();
     return () => { cancelled = true; };
-  }, [profile?.id, displayName, username, email]);
+  }, [profile?.id, displayName, username, email, profile?.avatar_url]);
 
   const emailUs = (subject) => { window.location.href = `mailto:khaliphindustries@gmail.com?subject=${encodeURIComponent(subject)}`; };
-  function openSwitcher() { setSavedAccounts(readSavedAccounts()); setSelectedAccount(null); setSwitchError(""); setSwitcherOpen(true); }
+  async function openSwitcher() { setSavedAccounts(await enrichAccountAvatars(readSavedAccounts())); setSelectedAccount(null); setSwitchError(""); setSwitcherOpen(true); }
   function chooseAccount(account) {
     if (!account?.id) return;
     if (account.id === profile?.id) { setSwitchError("This is already the active account."); return; }
@@ -102,7 +119,7 @@ export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSa
 
   return <section className="page profile-options-page">
     <header className="profile-options-head"><button className="profile-options-back" onClick={onBack} aria-label="Back"><ArrowLeft size={20} /></button><div><small>ACCOUNT</small><h1>Menu</h1></div></header>
-    <div className="profile-options-user"><div className="avatar profile-options-avatar">{initial}</div><div className="profile-options-identity"><strong>{displayName}</strong><span>@{username}</span></div></div>
+    <div className="profile-options-user"><div className="avatar profile-options-avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="Profile" /> : initial}</div><div className="profile-options-identity"><strong>{displayName}</strong><span>@{username}</span></div></div>
     <div className="profile-options-sections">
       <section className="profile-options-group"><h2>Profile</h2><div className="profile-options-list"><button className="profile-option-row" onClick={onEditProfile}><span className="option-icon"><Edit3 size={19} /></span><span className="option-copy"><b>Edit profile</b><small>Photo, name, bio and username</small></span><ChevronRight className="option-chevron" size={19} /></button><button className="profile-option-row" onClick={onViewProfile}><span className="option-icon"><User size={19} /></span><span className="option-copy"><b>View profile</b><small>Posts, Shorts, Moments and profile content</small></span><ChevronRight className="option-chevron" size={19} /></button><button className="profile-option-row" onClick={onSaved}><span className="option-icon"><Bookmark size={19} /></span><span className="option-copy"><b>Saved</b><small>Open the posts you have saved</small></span><ChevronRight className="option-chevron" size={19} /></button></div></section>
       <section className="profile-options-group"><h2>Account</h2><div className="profile-options-list"><button className="profile-option-row" onClick={openSwitcher}><span className="option-icon"><UsersRound size={19} /></span><span className="option-copy"><b>Switch account</b><small>Switch between up to 5 remembered accounts</small></span><ChevronRight className="option-chevron" size={19} /></button><button className="profile-option-row" onClick={onSettings}><span className="option-icon"><Settings size={19} /></span><span className="option-copy"><b>Settings</b><small>Notifications, appearance and account controls</small></span><ChevronRight className="option-chevron" size={19} /></button><button className="profile-option-row" onClick={onSettings}><span className="option-icon"><Lock size={19} /></span><span className="option-copy"><b>Privacy &amp; security</b><small>Control who can interact with you</small></span><ChevronRight className="option-chevron" size={19} /></button><button className="profile-option-row" onClick={onSettings}><span className="option-icon"><Shield size={19} /></span><span className="option-copy"><b>Account &amp; safety</b><small>Security and account protection</small></span><ChevronRight className="option-chevron" size={19} /></button></div></section>
@@ -114,7 +131,7 @@ export function ProfileOptionsPage({ profile, email, onBack, onViewProfile, onSa
       <div className="saved-account-list">
         {savedAccounts.length === 0 && <div className="switch-error">No remembered accounts yet.</div>}
         {savedAccounts.map((account) => <div key={account.id} className={`saved-account ${account.id === profile?.id ? "current" : ""}`}>
-          <button disabled={switching} className="saved-account-main" onClick={() => chooseAccount(account)}><span className="avatar saved-account-avatar">{(account.display_name || "C").slice(0,1).toUpperCase()}</span><span><b>{account.display_name}</b><small>@{account.username}{account.email ? ` · ${account.email}` : ""}</small></span>{account.id === profile?.id && <em>Current</em>}</button>
+          <button disabled={switching} className="saved-account-main" onClick={() => chooseAccount(account)}><span className="avatar saved-account-avatar">{account.avatar_url ? <img src={account.avatar_url} alt="" /> : (account.display_name || "C").slice(0,1).toUpperCase()}</span><span><b>{account.display_name}</b><small>@{account.username}{account.email ? ` · ${account.email}` : ""}</small></span>{account.id === profile?.id && <em>Current</em>}</button>
           {account.id !== profile?.id && <button className="saved-account-remove" disabled={switching} onClick={() => removeSavedAccount(account)} aria-label={`Remove ${account.username}`}>Remove</button>}
         </div>)}
       </div>
