@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Heart, MessageCircle, Send, Upload, Video, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Bookmark, Heart, MessageCircle, Send, Upload, Video, Volume2, VolumeX } from "lucide-react";
 import { getShortComments, isShortLikedByUser, likeShort, unlikeShort, addShortComment } from "../lib/shorts";
 import { publishShort } from "../lib/shorts_publish";
 import { VerifiedBadge } from "./VerifiedBadge";
 import { ProfilePanel } from "./ProfilePanel";
+import { supabase } from "../lib/supabase";
 import "./ShortsPanel.css";
 
 export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
   const [items, setItems] = useState(shorts);
+  const [savedShortIds, setSavedShortIds] = useState(new Set());
   const [commentsFor, setCommentsFor] = useState(null);
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState("");
@@ -32,6 +34,15 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
     }).catch(() => {});
     return () => { active = false; };
   }, [shorts, userId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!userId) return () => { active = false; };
+    supabase.from("saved_shorts").select("short_id").eq("user_id", userId).then(({ data }) => {
+      if (active) setSavedShortIds(new Set((data || []).map((row) => row.short_id)));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [userId, shorts]);
 
   useEffect(() => {
     const root = feedRef.current;
@@ -65,6 +76,20 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
   async function toggleLike(item) {
     if (item.liked) await unlikeShort(item.id, userId); else await likeShort(item.id, userId);
     setItems((prev) => prev.map((s) => s.id === item.id ? { ...s, liked: !s.liked, short_likes: [{ count: Math.max(0, (s.short_likes?.[0]?.count || 0) + (s.liked ? -1 : 1)) }] } : s));
+  }
+  async function toggleSave(short) {
+    if (!userId) return;
+    try {
+      if (savedShortIds.has(short.id)) {
+        const { error: deleteError } = await supabase.from("saved_shorts").delete().eq("user_id", userId).eq("short_id", short.id);
+        if (deleteError) throw deleteError;
+        setSavedShortIds((prev) => { const next = new Set(prev); next.delete(short.id); return next; });
+      } else {
+        const { error: insertError } = await supabase.from("saved_shorts").upsert({ user_id: userId, short_id: short.id }, { onConflict: "user_id,short_id" });
+        if (insertError) throw insertError;
+        setSavedShortIds((prev) => new Set(prev).add(short.id));
+      }
+    } catch (err) { setError(err.message || "Could not update Saved."); }
   }
   async function openComments(item) { setCommentsFor(item); setComments(await getShortComments(item.id)); }
   async function submitComment(e) { e.preventDefault(); if (!commentText.trim() || !commentsFor) return; const created = await addShortComment(commentsFor.id, userId, commentText.trim()); setComments((prev) => [created, ...prev]); setCommentText(""); }
@@ -128,6 +153,7 @@ export function ShortsPanel({ shorts = [], userId, onOpenCreator }) {
           <button onClick={() => openComments(short)} aria-label="Comment"><MessageCircle /><small>{short.short_comments?.[0]?.count || 0}</small></button>
           <button onClick={() => { if (navigator.share) navigator.share({ title: "Convogram Short", url: short.video_url || short.media_url }).catch(() => {}); }} aria-label="Share"><Send /></button>
           <button className="shorts-mute-button" onClick={toggleMute} aria-label={muted ? "Unmute sound" : "Mute sound"} title={muted ? "Unmute" : "Mute"}>{muted ? <VolumeX /> : <Volume2 />}</button>
+          <button className={`shorts-save-button ${savedShortIds.has(short.id) ? "saved" : ""}`} onClick={() => toggleSave(short)} aria-label={savedShortIds.has(short.id) ? "Unsave Short" : "Save Short"} title={savedShortIds.has(short.id) ? "Saved" : "Save"}><Bookmark fill={savedShortIds.has(short.id) ? "currentColor" : "none"} /></button>
         </div>
       </article>)}
     </div> : <div className="shorts-empty"><Video size={34}/><h2>No Shorts yet</h2><p>Upload a short video to start the feed.</p></div>}
