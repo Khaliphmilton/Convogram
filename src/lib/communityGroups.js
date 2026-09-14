@@ -17,6 +17,24 @@ export async function joinCommunityGroup(groupId, userId) {
   if (error) throw error;
   return data;
 }
+export async function getCommunityGroupMembers(groupId) {
+  const { data, error } = await supabase.from("community_group_members").select("id,group_id,user_id,role,joined_at,profiles:user_id(id,username,display_name,avatar_url)").eq("group_id", groupId).order("joined_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+export async function addCommunityGroupMember(groupId, userId) {
+  const { data, error } = await supabase.from("community_group_members").upsert({ group_id: groupId, user_id: userId, role: "member" }, { onConflict: "group_id,user_id" }).select("id,group_id,user_id,role,joined_at,profiles:user_id(id,username,display_name,avatar_url)").single();
+  if (error) throw error;
+  return data;
+}
+export async function removeCommunityGroupMember(groupId, userId) {
+  const { error } = await supabase.from("community_group_members").delete().eq("group_id", groupId).eq("user_id", userId);
+  if (error) throw error;
+}
+export async function deleteCommunityGroup(groupId) {
+  const { error } = await supabase.from("community_groups").delete().eq("id", groupId);
+  if (error) throw error;
+}
 export async function getCommunityGroupMessages(groupId, limit = 100) {
   const { data, error } = await supabase.from("community_group_messages").select("*, profiles:user_id(id,username,display_name,avatar_url)").eq("group_id", groupId).order("created_at", { ascending: true }).limit(limit);
   if (error) throw error;
