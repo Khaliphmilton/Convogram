@@ -24,16 +24,14 @@ jobs:
           s=p.read_text()
           if 'from "emoji-picker-react"' not in s:
               s=s.replace('import { VerifiedBadge } from "./VerifiedBadge";', 'import { VerifiedBadge } from "./VerifiedBadge";\nimport EmojiPicker from "emoji-picker-react";', 1)
+          state_line='  const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 });'
           if 'const [emojiOpen, setEmojiOpen]' not in s:
-              anchor='const [swipe, setSwipe] = useState({ id: null, x: 0 });'
-              if anchor not in s:
-                  raise SystemExit('swipe state marker missing')
-              s=s.replace(anchor, anchor+'\n  const [emojiOpen, setEmojiOpen] = useState(false);', 1)
+              if state_line not in s: raise SystemExit('chat state line missing')
+              s=s.replace(state_line, state_line+'\n  const [emojiOpen, setEmojiOpen] = useState(false);', 1)
           # Replace only the emoji panel JSX, handling nested divs safely.
           marker='<div className="convogram-emoji-panel"'
           start=s.find(marker)
-          if start < 0:
-              raise SystemExit('emoji panel marker missing')
+          if start < 0: raise SystemExit('emoji panel marker missing')
           depth=0; i=start
           while True:
               a=s.find('<div', i); b=s.find('</div>', i)
@@ -42,8 +40,7 @@ jobs:
                   depth += 1; i=a+4
               else:
                   depth -= 1; i=b+6
-                  if depth == 0:
-                      end=i; break
+                  if depth == 0: end=i; break
           panel='<div className="convogram-emoji-panel" role="dialog" aria-label="Emoji picker"><EmojiPicker onEmojiClick={(emojiData) => { setDraft(d => d + emojiData.emoji); requestAnimationFrame(() => composerRef.current?.focus()); }} width="100%" height="100%" previewConfig={{ showPreview: false }} skinTonesDisabled={false} searchDisabled={false} lazyLoadEmojis={true} /></div>'
           s=s[:start]+panel+s[end:]
           if 'aria-label="Open emoji picker"' not in s:
