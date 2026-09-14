@@ -1,53 +1,37 @@
-/* Convogram Android system-bar safe area. Keep interactive UI between the Android status bar and navigation/gesture bar. */
-html,
-body {
-  background: #071426;
+/* Android system bars are handled by the native Capacitor Activity.
+   The WebView receives a viewport that is already inside the status and
+   navigation bars, so pages should use their normal layout dimensions. */
+html, body, #root {
+  width: 100%;
   min-height: 100%;
+  margin: 0;
 }
 
-:root {
-  --convogram-safe-top: max(env(safe-area-inset-top, 0px), 24px);
-  --convogram-safe-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
-}
-
-#root,
 .app {
-  min-height: 100vh;
   min-height: 100dvh;
 }
 
-/* Normal app header: visible controls start below Android's status bar. */
+/* The normal Convogram header is part of the app viewport and remains fixed
+   in its normal position. It is hidden only when chat mode explicitly opens. */
 .topbar {
   top: 0;
-  padding-top: var(--convogram-safe-top);
-  height: calc(64px + var(--convogram-safe-top));
-  align-items: center;
   box-sizing: border-box;
 }
 
-/* Page content never disappears behind the bottom system UI. */
 .content {
-  padding-bottom: calc(60px + var(--convogram-safe-bottom));
+  box-sizing: border-box;
 }
 
-/* The app's mobile navigation reserves the Android navigation/gesture area. */
 .mobile-nav {
   bottom: 0;
-  padding-bottom: calc(6px + var(--convogram-safe-bottom));
   box-sizing: border-box;
 }
 
-/* Full-screen overlays keep interactive controls clear of both system bars. */
 .modal-backdrop {
-  padding-top: calc(15px + var(--convogram-safe-top));
-  padding-bottom: calc(15px + var(--convogram-safe-bottom));
   box-sizing: border-box;
 }
 
-/* The splash may cover the screen, but its branding stays inside the safe area. */
 #convogram-splash {
-  padding-top: var(--convogram-safe-top);
-  padding-bottom: var(--convogram-safe-bottom);
   box-sizing: border-box;
 }
 
@@ -55,52 +39,5 @@ body {
   .topbar {
     padding-left: 14px;
     padding-right: 14px;
-    height: calc(56px + var(--convogram-safe-top));
-    min-height: calc(56px + var(--convogram-safe-top));
-  }
-
-  .content {
-    padding-bottom: calc(82px + var(--convogram-safe-bottom));
-  }
-
-  .mobile-nav {
-    min-height: calc(58px + var(--convogram-safe-bottom));
-  }
-}
-
-@media (max-width: 560px) {
-  /* Communities/Profile begin after the complete safe header. */
-  .content:has(.community-workspace),
-  .content:has(.profile-pro) {
-    padding-top: max(10px, var(--convogram-safe-top));
-  }
-
-  .topbar {
-    gap: 6px;
-  }
-
-  .moment-viewer-top {
-    padding-top: calc(12px + var(--convogram-safe-top));
-  }
-
-  .moment-viewer-bottom {
-    padding-bottom: calc(11px + var(--convogram-safe-bottom));
-  }
-}
-
-/* Chat replaces the app navigation bar, but its header and composer still
-   remain inside Android's system-bar bounds. */
-@media (max-width: 760px) {
-  .app.chat-mode {
-    min-height: 100dvh;
-  }
-
-  .app.chat-mode .messages-page-shell,
-  .app.chat-mode .messages-panel {
-    min-height: 0 !important;
-  }
-
-  .app.chat-mode .messages-page-shell {
-    height: calc(100dvh - var(--convogram-safe-top) - var(--convogram-safe-bottom)) !important;
   }
 }
