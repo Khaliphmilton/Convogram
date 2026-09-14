@@ -1,24 +1,27 @@
 import { App as CapacitorApp } from "@capacitor/app";
 
-const findChatBackButton = () => document.querySelector(".chat-back-button");
+const findChatBackButton = () =>
+  document.querySelector(".convogram-stable-chat-back, .chat-back-button");
+
 const findGroupChatBackButton = () => document.querySelector(".group-chat-back");
 
+const findEmojiPanel = () => document.querySelector(".convogram-emoji-panel");
+
 const closeEmojiPicker = () => {
-  const toggle = document.querySelector(".convogram-emoji-toggle.active");
+  const panel = findEmojiPanel();
+  if (!panel) return false;
+
+  const toggle = document.querySelector(
+    '.convogram-stable-composer-wrap .convogram-stable-icon[aria-label="Emoji"]'
+  );
   if (!toggle) return false;
+
   toggle.click();
   return true;
 };
 
-const consumeNextPopAfterEmojiClose = () => {
-  window.__convogramIgnoreNextPop = true;
-};
-
 const closeOpenNestedScreen = () => {
-  if (closeEmojiPicker()) {
-    consumeNextPopAfterEmojiClose();
-    return true;
-  }
+  if (closeEmojiPicker()) return true;
 
   const chatButton = findChatBackButton();
   if (chatButton) {
@@ -36,14 +39,9 @@ const closeOpenNestedScreen = () => {
 };
 
 window.__convogramChatBack = (event) => {
-  if (window.__convogramIgnoreNextPop) {
-    window.__convogramIgnoreNextPop = false;
-    event?.preventDefault?.();
-    event?.stopImmediatePropagation?.();
-    return true;
-  }
+  const handled = closeOpenNestedScreen();
+  if (!handled) return false;
 
-  if (!closeOpenNestedScreen()) return false;
   event?.preventDefault?.();
   event?.stopPropagation?.();
   event?.stopImmediatePropagation?.();
@@ -51,24 +49,27 @@ window.__convogramChatBack = (event) => {
 };
 
 let nativeBackListener = null;
-CapacitorApp.addListener("backButton", async () => {
-  if (closeEmojiPicker()) {
-    consumeNextPopAfterEmojiClose();
-    return;
-  }
 
+CapacitorApp.addListener("backButton", async () => {
+  // 1. Picker is the top-most layer: close only the picker.
+  if (closeEmojiPicker()) return;
+
+  // 2. An open conversation: go back to the Messages conversation list,
+  //    not to the Home page.
   const chatButton = findChatBackButton();
   if (chatButton) {
     chatButton.click();
     return;
   }
 
+  // 3. Group-chat fallback.
   const groupButton = findGroupChatBackButton();
   if (groupButton) {
     groupButton.click();
     return;
   }
 
+  // 4. Normal page/history navigation.
   const state = window.history.state;
   if (state?.overlay || state?.page) {
     window.history.back();
@@ -88,6 +89,5 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     try { nativeBackListener?.remove?.(); } catch (_) {}
     if (window.__convogramChatBack) delete window.__convogramChatBack;
-    delete window.__convogramIgnoreNextPop;
   });
 }
