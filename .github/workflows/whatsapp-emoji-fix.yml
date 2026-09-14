@@ -1,0 +1,60 @@
+name: WhatsApp-style emoji picker
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  patch:
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, 'WhatsApp-style full emoji picker')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install full emoji picker
+        run: npm install emoji-picker-react --save --no-audit --no-fund
+      - name: Patch composer
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/components/MessagesPanelOriginal.jsx')
+          s=p.read_text()
+          if 'from "emoji-picker-react"' not in s:
+              s=s.replace('import { VerifiedBadge } from "./VerifiedBadge";', 'import { VerifiedBadge } from "./VerifiedBadge";\nimport EmojiPicker from "emoji-picker-react";')
+          if 'const [emojiOpen' not in s:
+              s=s.replace('const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 });', 'const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 }), [emojiOpen, setEmojiOpen] = useState(false);')
+          old='<div className="convogram-emoji-panel">'
+          if old in s:
+              start=s.index(old)
+              end=s.index('</div>', start)+6
+              s=s[:start]+'<div className="convogram-emoji-panel"><EmojiPicker onEmojiClick={(emojiData) => { setDraft(d => d + emojiData.emoji); requestAnimationFrame(() => composerRef.current?.focus()); }} width="100%" height={360} previewConfig={{ showPreview: false }} skinTonesDisabled={false} searchDisabled={false} lazyLoadEmojis={false} /> </div>'+s[end:]
+          else:
+              marker='<div className="convogram-stable-composer-wrap">'
+              if marker not in s: raise SystemExit('composer marker missing')
+              s=s.replace(marker, marker+'{emojiOpen && <div className="convogram-emoji-panel"><EmojiPicker onEmojiClick={(emojiData) => { setDraft(d => d + emojiData.emoji); requestAnimationFrame(() => composerRef.current?.focus()); }} width="100%" height={360} previewConfig={{ showPreview: false }} skinTonesDisabled={false} searchDisabled={false} lazyLoadEmojis={false} /></div>}',1)
+          old='className="convogram-stable-icon" aria-label="Add media"'
+          # Put the picker button immediately before the media button, without touching other controls.
+          if 'aria-label="Open emoji picker"' not in s:
+              needle='<button type="button" className="convogram-stable-icon" aria-label="Add media"'
+              if needle not in s: raise SystemExit('media button marker missing')
+              s=s.replace(needle, '<button type="button" className="convogram-stable-icon" aria-label="Open emoji picker" onClick={() => setEmojiOpen(v => !v)}><Smile size={20}/></button>'+needle,1)
+          s=s.replace('.convogram-stable-composer-wrap{', '.convogram-stable-composer-wrap{position:relative;') if '.convogram-stable-composer-wrap{' in s and 'position:relative' not in s[s.index('.convogram-stable-composer-wrap{'):s.index('.convogram-stable-composer-wrap{')+100] else s
+          s=s.replace('.convogram-emoji-panel{', '.convogram-emoji-panel{position:absolute;bottom:58px;left:0;right:0;z-index:20;background:#111;border:1px solid #292929;border-radius:14px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.45);') if '.convogram-emoji-panel{' in s else s
+          p.write_text(s)
+          PY
+      - name: Build validation
+        run: npm run build
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/MessagesPanelOriginal.jsx package.json package-lock.json
+          git commit -m 'WhatsApp-style full emoji picker' || exit 0
+          git push
+      - name: Remove one-time workflow
+        if: success()
+        run: |
+          git rm .github/workflows/whatsapp-emoji-fix.yml || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Remove emoji picker patch workflow' || true
+          git push || true
