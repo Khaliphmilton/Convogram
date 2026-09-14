@@ -1,0 +1,1 @@
+Android Back button integration marker. The shared handler is in src/lib/androidBackButton.js and must be mounted by the app root with nested-screen state callbacks.
