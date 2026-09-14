@@ -21,42 +21,60 @@
       #convogram-splash .company{position:absolute;bottom:48px;font-size:12px;font-weight:800;letter-spacing:.24em;color:rgba(255,255,255,.72)}
       #convogram-splash .tagline{position:absolute;bottom:27px;font-size:9px;letter-spacing:.12em;color:rgba(255,255,255,.34)}
 
-      /* Convogram chat emoji picker: use the full panel width with a clean, responsive grid. */
+      /* Emoji picker layout fix: size the outer panel, then let emoji-picker-react
+         manage its own responsive grid. Do not replace its internal list layout. */
+      .messages-panel.chat-open .convogram-emoji-panel{
+        position:absolute!important;
+        left:10px!important;
+        right:10px!important;
+        bottom:calc(100% + 8px)!important;
+        width:auto!important;
+        max-width:none!important;
+        height:min(360px,52vh)!important;
+        min-height:240px!important;
+        padding:0!important;
+        box-sizing:border-box!important;
+        display:block!important;
+        overflow:hidden!important;
+        z-index:80!important;
+      }
       .messages-panel.chat-open .convogram-emoji-panel .EmojiPickerReact,
+      .messages-panel.chat-open .convogram-emoji-panel aside.EmojiPickerReact{
+        width:100%!important;
+        max-width:none!important;
+        min-width:0!important;
+        height:100%!important;
+        min-height:0!important;
+        box-sizing:border-box!important;
+        --epr-emoji-size:30px;
+        --epr-emoji-padding:4px;
+        --epr-horizontal-padding:8px;
+        --epr-picker-border-radius:14px;
+      }
       .messages-panel.chat-open .convogram-emoji-panel .epr-main,
       .messages-panel.chat-open .convogram-emoji-panel .epr-body,
-      .messages-panel.chat-open .convogram-emoji-panel .epr-emoji-category-content,
-      .messages-panel.chat-open .convogram-emoji-panel .epr-emoji-list{width:100%!important;max-width:none!important;min-width:0!important}
-      .messages-panel.chat-open .convogram-emoji-panel .epr-body{overflow-x:hidden!important}
-      .messages-panel.chat-open .convogram-emoji-panel .epr-emoji-list{
-        display:grid!important;
-        grid-template-columns:repeat(auto-fit,minmax(42px,1fr))!important;
-        align-items:center!important;
-        justify-items:center!important;
-        gap:4px!important;
-        padding:8px 10px 12px!important;
-        box-sizing:border-box!important;
-      }
-      .messages-panel.chat-open .convogram-emoji-panel .epr-emoji{
+      .messages-panel.chat-open .convogram-emoji-panel .epr-emoji-category-content{
         width:100%!important;
-        min-width:0!important;
         max-width:none!important;
-        height:42px!important;
-        display:grid!important;
-        place-items:center!important;
-        padding:0!important;
-        margin:0!important;
-        border-radius:10px!important;
+        min-width:0!important;
         box-sizing:border-box!important;
       }
-      .messages-panel.chat-open .convogram-emoji-panel .epr-emoji .epr-emoji-img{
-        width:30px!important;
-        height:30px!important;
+      .messages-panel.chat-open .convogram-emoji-panel .epr-body{
+        overflow-x:hidden!important;
       }
       @media(max-width:420px){
-        .messages-panel.chat-open .convogram-emoji-panel .epr-emoji-list{grid-template-columns:repeat(auto-fit,minmax(36px,1fr))!important;gap:2px!important;padding-left:7px!important;padding-right:7px!important}
-        .messages-panel.chat-open .convogram-emoji-panel .epr-emoji{height:38px!important}
-        .messages-panel.chat-open .convogram-emoji-panel .epr-emoji .epr-emoji-img{width:27px!important;height:27px!important}
+        .messages-panel.chat-open .convogram-emoji-panel{
+          left:6px!important;
+          right:6px!important;
+          height:min(340px,50vh)!important;
+          min-height:220px!important;
+        }
+        .messages-panel.chat-open .convogram-emoji-panel .EmojiPickerReact,
+        .messages-panel.chat-open .convogram-emoji-panel aside.EmojiPickerReact{
+          --epr-emoji-size:28px;
+          --epr-emoji-padding:3px;
+          --epr-horizontal-padding:6px;
+        }
       }
     </style>
     <title>Convogram</title>
