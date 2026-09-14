@@ -7,7 +7,9 @@ export function consumePendingDirectConversationId() { let id = pendingDirectCon
 
 const CONVERSATION_COLUMNS = "id,created_by,type,name,avatar_url,created_at,updated_at";
 const MEMBER_COLUMNS = "conversation_id,user_id,role,joined_at,last_read_at,hidden_at";
+const MESSAGE_COLUMNS = "id,conversation_id,sender_id,content,message_type,media_url,reply_to_id,is_deleted,created_at,updated_at";
 const MESSAGE_PREVIEW_COLUMNS = "id,conversation_id,sender_id,content,message_type,created_at,is_deleted";
+const PROFILE_COLUMNS = "id,username,display_name,avatar_url,is_verified";
 
 export async function getConversations(userId, limit = 50) {
   if (!userId) return [];
@@ -24,8 +26,6 @@ export async function getConversations(userId, limit = 50) {
   const ids = rows.map(r => r.conversation_id).filter(Boolean);
   if (!ids.length) return [];
 
-  // Explicit columns are intentional: the conversations table does not have
-  // last_message_at. Never ask PostgREST for that nonexistent column.
   const { data: conversationRows, error: conversationError } = await supabase
     .from("conversations")
     .select(CONVERSATION_COLUMNS)
@@ -43,7 +43,7 @@ export async function getConversations(userId, limit = 50) {
   let profiles = [];
   if (otherIds.length) {
     try {
-      const result = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").in("id", otherIds);
+      const result = await supabase.from("profiles").select(PROFILE_COLUMNS).in("id", otherIds);
       if (!result.error) profiles = result.data || [];
     } catch (_) {}
   }
@@ -91,22 +91,65 @@ export async function getDirectConversation(userId, otherUserId) {
 export async function getConversationDetails(conversationId) { const { data, error } = await supabase.from("conversations").select(CONVERSATION_COLUMNS).eq("id", conversationId).single(); if (error) throw error; return data; }
 
 export async function getMessages(conversationId, limit = 100, userId = null) {
-  const { data, error } = await supabase.from("messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(limit);
+  if (!conversationId) return [];
+  const { data, error } = await supabase
+    .from("messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true })
+    .limit(limit);
   if (error) throw error;
+
   const messages = data || [];
+  if (!messages.length) {
+    if (userId) { try { await markConversationAsRead(conversationId, userId); } catch (_) {} }
+    return messages;
+  }
+
   const senderIds = [...new Set(messages.map(m => m.sender_id).filter(Boolean))];
-  if (senderIds.length) { const { data: profiles } = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").in("id", senderIds); const byId = new Map((profiles || []).map(p => [p.id, p])); messages.forEach(m => { m.profiles = byId.get(m.sender_id) || null; }); }
+  if (senderIds.length) {
+    try {
+      const { data: profiles } = await supabase.from("profiles").select(PROFILE_COLUMNS).in("id", senderIds);
+      const byId = new Map((profiles || []).map(p => [p.id, p]));
+      messages.forEach(m => { m.profiles = byId.get(m.sender_id) || null; });
+    } catch (_) {}
+  }
+
   const replyIds = [...new Set(messages.map(m => m.reply_to_id).filter(Boolean))];
-  if (replyIds.length) { const { data: replies } = await supabase.from("messages").select("*").in("id", replyIds); const byId = new Map((replies || []).map(r => [r.id, r])); messages.forEach(m => { if (m.reply_to_id) m.reply_to = byId.get(m.reply_to_id) || null; }); }
+  if (replyIds.length) {
+    try {
+      const { data: replies } = await supabase.from("messages").select(MESSAGE_COLUMNS).in("id", replyIds);
+      const byId = new Map((replies || []).map(r => [r.id, r]));
+      messages.forEach(m => { if (m.reply_to_id) m.reply_to = byId.get(m.reply_to_id) || null; });
+    } catch (_) {}
+  }
+
+  try {
+    const { data: reactions } = await supabase.from("message_reactions").select("id,message_id,user_id,reaction").in("message_id", messages.map(m => m.id));
+    const byMessage = new Map();
+    (reactions || []).forEach(r => {
+      const bucket = byMessage.get(r.message_id) || [];
+      bucket.push(r);
+      byMessage.set(r.message_id, bucket);
+    });
+    messages.forEach(m => { m.message_reactions = byMessage.get(m.id) || []; });
+  } catch (_) {}
+
   if (userId) { try { await markConversationAsRead(conversationId, userId); } catch (_) {} }
   return messages;
 }
 
-export async function sendMessage(conversationId, senderId, content, messageType = "text", mediaUrl = null, replyToId = null) { const { data, error } = await supabase.from("messages").insert([{ conversation_id: conversationId, sender_id: senderId, content: messageType === "text" ? content : null, message_type: messageType, media_url: mediaUrl, reply_to_id: replyToId || null }]).select().single(); if (error) throw error; const { data: profile } = await supabase.from("profiles").select("id,username,display_name,avatar_url,is_verified").eq("id", senderId).maybeSingle(); if (data) data.profiles = profile || null; return data; }
-export async function deleteMessage(messageId) { const { data, error } = await supabase.from("messages").update({ is_deleted: true, content: null, media_url: null, updated_at: new Date().toISOString() }).eq("id", messageId).select().single(); if (error) throw error; return data; }
+export async function sendMessage(conversationId, senderId, content, messageType = "text", mediaUrl = null, replyToId = null) {
+  const { data, error } = await supabase.from("messages").insert([{ conversation_id: conversationId, sender_id: senderId, content: messageType === "text" ? content : null, message_type: messageType, media_url: mediaUrl, reply_to_id: replyToId || null }]).select(MESSAGE_COLUMNS).single();
+  if (error) throw error;
+  const { data: profile } = await supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", senderId).maybeSingle();
+  if (data) { data.profiles = profile || null; data.message_reactions = []; }
+  return data;
+}
+export async function deleteMessage(messageId) { const { data, error } = await supabase.from("messages").update({ is_deleted: true, content: null, media_url: null, updated_at: new Date().toISOString() }).eq("id", messageId).select(MESSAGE_COLUMNS).single(); if (error) throw error; return data; }
 export async function deleteConversationForUser(conversationId, userId) { const { error } = await supabase.from("conversation_members").update({ hidden_at: new Date().toISOString() }).eq("conversation_id", conversationId).eq("user_id", userId); if (error) throw error; }
 export function subscribeToConversation(conversationId, onInsert, onUpdate) { const channel = supabase.channel(`convogram-chat-${conversationId}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, payload => onInsert(payload.new)).on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, payload => onUpdate?.(payload.new)).subscribe(); return () => supabase.removeChannel(channel); }
-export async function markMessageAsRead(messageId, userId) { const { data, error } = await supabase.from("read_receipts").insert([{ message_id: messageId, user_id: userId }]).select().single(); if (error && error.code !== "23505") throw error; const { data: message } = await supabase.from("messages").select("conversation_id").eq("id", messageId).maybeSingle(); if (message?.conversation_id) await markConversationAsRead(message.conversation_id, userId); return data; }
+export async function markMessageAsRead(messageId, userId) { const { data, error } = await supabase.from("read_receipts").insert([{ message_id: messageId, user_id: userId, }).select().single(); if (error && error.code !== "23505") throw error; const { data: message } = await supabase.from("messages").select("conversation_id").eq("id", messageId).maybeSingle(); if (message?.conversation_id) await markConversationAsRead(message.conversation_id, userId); return data; }
 export async function markConversationAsRead(conversationId, userId) { if (!conversationId || !userId) return; const { error } = await supabase.from("conversation_members").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", conversationId).eq("user_id", userId); if (error) throw error; }
 export async function addMessageReaction(messageId, userId, reaction) { const { data, error } = await supabase.from("message_reactions").insert([{ message_id: messageId, user_id: userId, reaction }]).select().single(); if (error) throw error; return data; }
 export async function removeMessageReaction(messageId, userId, reaction) { const { error } = await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", userId).eq("reaction", reaction); if (error) throw error; }
