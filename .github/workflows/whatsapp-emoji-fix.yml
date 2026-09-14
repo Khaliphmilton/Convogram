@@ -15,8 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install full emoji picker
         run: npm install emoji-picker-react --save --no-audit --no-fund
-      - name: Patch composer
-        shell: bash
+      - name: Replace emoji panel only
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -24,11 +23,6 @@ jobs:
           s=p.read_text()
           if 'from "emoji-picker-react"' not in s:
               s=s.replace('import { VerifiedBadge } from "./VerifiedBadge";', 'import { VerifiedBadge } from "./VerifiedBadge";\nimport EmojiPicker from "emoji-picker-react";', 1)
-          state_line='  const [replyingTo, setReplyingTo] = useState(null), [menuMessage, setMenuMessage] = useState(null), [editingMessage, setEditingMessage] = useState(null), [reactionOpen, setReactionOpen] = useState(false), [swipe, setSwipe] = useState({ id: null, x: 0 });'
-          if 'const [emojiOpen, setEmojiOpen]' not in s:
-              if state_line not in s: raise SystemExit('chat state line missing')
-              s=s.replace(state_line, state_line+'\n  const [emojiOpen, setEmojiOpen] = useState(false);', 1)
-          # Replace only the emoji panel JSX, handling nested divs safely.
           marker='<div className="convogram-emoji-panel"'
           start=s.find(marker)
           if start < 0: raise SystemExit('emoji panel marker missing')
@@ -43,10 +37,6 @@ jobs:
                   if depth == 0: end=i; break
           panel='<div className="convogram-emoji-panel" role="dialog" aria-label="Emoji picker"><EmojiPicker onEmojiClick={(emojiData) => { setDraft(d => d + emojiData.emoji); requestAnimationFrame(() => composerRef.current?.focus()); }} width="100%" height="100%" previewConfig={{ showPreview: false }} skinTonesDisabled={false} searchDisabled={false} lazyLoadEmojis={true} /></div>'
           s=s[:start]+panel+s[end:]
-          if 'aria-label="Open emoji picker"' not in s:
-              needle='<button type="button" className="convogram-stable-icon" aria-label="Add media"'
-              if needle not in s: raise SystemExit('media button marker missing')
-              s=s.replace(needle, '<button type="button" className="convogram-stable-icon" aria-label="Open emoji picker" onClick={() => setEmojiOpen(v => !v)}><Smile size={20}/></button>'+needle, 1)
           p.write_text(s)
           PY
       - name: Style only the emoji panel
@@ -54,8 +44,7 @@ jobs:
           cat >> src/components/MessagesPanel.css <<'EOF'
 
           /* Full WhatsApp-style emoji picker; no other chat controls changed. */
-          .convogram-stable-composer-wrap{position:relative}
-          .convogram-emoji-panel{position:absolute;left:0;right:0;bottom:calc(100% + 4px);height:min(360px,52vh);z-index:80;background:#111;border:1px solid #292929;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 -8px 28px rgba(0,0,0,.45)}
+          .convogram-emoji-panel{position:relative;left:auto;right:auto;bottom:auto;height:min(360px,52vh);z-index:80;background:#111;border:1px solid #292929;border-radius:14px;overflow:hidden;box-shadow:0 -8px 28px rgba(0,0,0,.45)}
           .convogram-emoji-panel .EmojiPickerReact{width:100%!important;height:100%!important}
           EOF
       - name: Build validation
