@@ -1,48 +1,161 @@
-/* Chat layout is entirely flow-based. Native Android/iOS owns system-bar geometry. */
+/* Chat layout contract: the chat owns the available WebView viewport.
+   Android's MainActivity supplies the system-bar-safe WebView bounds, so the
+   chat must fill that viewport without adding a second fake inset. */
 @media (max-width: 820px) {
-  body:has(.messages-panel.chat-open) .messages-panel.chat-open,
-  body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window {
-    position: relative !important;
-    inset: auto !important;
+  body:has(.messages-panel.chat-open) .messages-panel.chat-open {
+    position: fixed !important;
+    inset: 0 !important;
     width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-  }
-
-  body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window .message-stream {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-y: auto !important;
-    padding-bottom: 0 !important;
-  }
-
-  body:has(.messages-panel.chat-open) .messages-panel.chat-open > .chat-window .message-composer {
-    position: relative !important;
-    inset: auto !important;
-    width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     min-height: 0 !important;
     max-height: none !important;
     margin: 0 !important;
-    flex: 0 0 auto !important;
-    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    z-index: 2147483647 !important;
+    box-sizing: border-box !important;
+    isolation: isolate !important;
   }
 
-  .convogram-stable-chat {
+  /* The stable chat implementation is the actual mobile DOM. */
+  body:has(.messages-panel.chat-open) .convogram-stable-chat {
+    position: fixed !important;
+    inset: 0 !important;
     width: 100% !important;
-    min-width: 0 !important;
+    height: 100% !important;
     min-height: 0 !important;
-    padding-bottom: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
     box-sizing: border-box !important;
+    background: #080808 !important;
+    z-index: 2147483647 !important;
+    isolation: isolate !important;
+  }
+
+  .convogram-stable-chat > .convogram-stable-chat-head {
+    flex: 0 0 62px !important;
+    height: 62px !important;
+    min-height: 62px !important;
+    max-height: 62px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    margin: 0 !important;
+    z-index: 10 !important;
   }
 
   .convogram-stable-chat > .convogram-stable-chat-body {
     min-width: 0 !important;
     min-height: 0 !important;
-    flex: 1 1 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    flex: 1 1 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
   }
+
+  .convogram-stable-chat .convogram-stable-chat-stream {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: contain !important;
+    touch-action: pan-y !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+  }
+
+  .convogram-stable-chat .convogram-chat-row {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    touch-action: pan-y !important;
+  }
+
+  .convogram-stable-chat .convogram-chat-bubble {
+    flex: 0 0 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    touch-action: pan-y !important;
+  }
+
+  .convogram-stable-chat .convogram-chat-error {
+    flex: 0 0 auto !important;
+  }
+
+  .convogram-stable-chat .convogram-stable-reply-bar {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    max-height: 58px !important;
+    box-sizing: border-box !important;
+  }
+
+  .convogram-stable-chat > .convogram-stable-chat-body > .convogram-stable-composer-wrap {
+    position: relative !important;
+    inset: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 68px !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 8px 10px !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
+    flex: 0 0 auto !important;
+    box-sizing: border-box !important;
+    z-index: 20 !important;
+    background: #0b0b0b !important;
+    border-top: 1px solid #202020 !important;
+  }
+
+  .convogram-stable-chat .convogram-stable-composer {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Keep the existing system-bar hiding behavior while the chat is open. */
+  body:has(.messages-panel.chat-open) .mobile-nav,
+  body:has(.messages-panel.chat-open) .app > .mobile-nav {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
+
+.convogram-stable-chat-stream {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.convogram-chat-row {
+  flex: 0 0 auto;
+  height: auto;
+}
+
+.convogram-chat-bubble {
+  flex: 0 0 auto;
+  height: auto;
 }
