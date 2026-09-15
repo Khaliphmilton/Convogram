@@ -1,4 +1,4 @@
-name: Build and Release Convogram Android APK
+name: Build and Release Convogram Android APK and AAB
 
 on:
   push:
@@ -103,33 +103,39 @@ jobs:
           chmod 600 "$GITHUB_WORKSPACE/convogram-release.jks"
           keytool -list -keystore "$GITHUB_WORKSPACE/convogram-release.jks" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
 
-      - name: Build signed release APK
+      - name: Build signed release APK and AAB
         working-directory: android
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_STORE: ${{ github.workspace }}/convogram-release.jks
         run: |
           set -e
-          ./gradlew assembleRelease -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/convogram-release.jks" -Pandroid.injected.signing.store.password="$STORE_PASSWORD" -Pandroid.injected.signing.key.alias="$KEY_ALIAS" -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          ./gradlew assembleRelease bundleRelease -Pandroid.injected.signing.store.file="$SIGNING_STORE" -Pandroid.injected.signing.store.password="$STORE_PASSWORD" -Pandroid.injected.signing.key.alias="$KEY_ALIAS" -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
           test -f app/build/outputs/apk/release/app-release.apk
+          test -f app/build/outputs/bundle/release/app-release.aab
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
 
-      - name: Upload signed release APK artifact
+      - name: Upload signed release APK and AAB artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: convogram-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: convogram-release-apk-and-aab
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
 
-      - name: Create GitHub release and attach signed APK
+      - name: Create GitHub release and attach signed APK and AAB
         uses: softprops/action-gh-release@v2
         with:
           tag_name: convogram-build-${{ github.run_number }}
           name: Convogram Android Build ${{ github.run_number }}
           generate_release_notes: false
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Remove signing key
         if: always()
