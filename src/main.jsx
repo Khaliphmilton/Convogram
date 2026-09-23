@@ -29,6 +29,37 @@ const primaryBackPages = new Set(["shorts", "messages", "communities", "profile"
 const avatar = (p) => (p?.display_name || p?.username || "C").slice(0, 1).toUpperCase();
 const relationCount = (value) => { if (Array.isArray(value)) return Number(value[0]?.count) || 0; return Number(value?.count) || 0; };
 
+function DownloadPage() {
+  const [release, setRelease] = useState(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    fetch("https://api.github.com/repos/Khaliphmilton/Convogram/releases?per_page=10", { cache: "no-store" })
+      .then((r) => { if (!r.ok) throw new Error("release"); return r.json(); })
+      .then((list) => {
+        const r = (list || []).find((x) => !x.draft && !x.prerelease && (x.assets || []).some((a) => /\\.apk$/i.test(a.name)));
+        if (!r) throw new Error("no-apk");
+        const apk = r.assets.find((a) => /\\.apk$/i.test(a.name));
+        setRelease({ ...r, apk });
+      })
+      .catch(() => setError(true));
+  }, []);
+  return <div className="download-page">
+    <div className="download-inner">
+      <div className="brand-mark">C</div>
+      <p className="download-kicker">KHALIPH INDUSTRIES</p>
+      <h1>Download Convogram</h1>
+      <p>Get the official Convogram Android app.</p>
+      <div className="download-card">
+        <b>{release ? (release.name || release.tag_name) : "Latest Android release"}</b>
+        <span>{release?.apk?.name || "Checking for APK…"}</span>
+        {release ? <a className="primary download-button" href={release.apk.browser_download_url}>Download Convogram APK</a> : <div className="download-status">{error ? "APK temporarily unavailable. Please try again later." : "Finding the latest signed APK…"}</div>}
+      </div>
+      <div className="download-help"><b>Install on Android</b><br/>1. Download the APK.<br/>2. Open it from Downloads.<br/>3. Allow installation from your browser if Android asks.<br/>4. Tap Install.</div>
+      <a className="download-home" href="/">Open Convogram</a>
+    </div>
+  </div>;
+}
+
 function App() {
   const [session, setSession] = useState(null); const [profile, setProfile] = useState(null); const [viewedProfile, setViewedProfile] = useState(null); const [booting, setBooting] = useState(true); const [authMode, setAuthMode] = useState("login"); const [active, setActiveState] = useState("home"); const [profileTab, setProfileTab] = useState("posts"); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [username, setUsername] = useState(""); const [displayName, setDisplayName] = useState(""); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [posts, setPosts] = useState([]); const [moments, setMoments] = useState([]); const [shorts, setShorts] = useState([]); const [liked, setLiked] = useState({}); const [loadingFeed, setLoadingFeed] = useState(false); const [composer, setComposer] = useState(null); const [caption, setCaption] = useState(""); const [file, setFile] = useState(null); const [publishing, setPublishing] = useState(false); const [notifications, setNotifications] = useState(false); const [featureSuite, setFeatureSuite] = useState(false); const [unread, setUnread] = useState(0); const [stats, setStats] = useState({ postsCount: 0, followersCount: 0, followingCount: 0 });
   const activeRef = useRef("home"); const navigationStackRef = useRef([]); const ignoreNextPopRef = useRef(false); const notificationsHistoryRef = useRef(false); const sessionRef = useRef(null); const accountGenerationRef = useRef(0);
@@ -50,7 +81,7 @@ function App() {
   async function toggleLike(post) { try { const wasLiked = !!liked[post.id]; if (wasLiked) await unlikePost(post.id, session.user.id); else await likePost(post.id, session.user.id); setLiked((current) => ({ ...current, [post.id]: !wasLiked })); setPosts((current) => current.map((item) => item.id === post.id ? { ...item, likes: [{ count: Math.max(0, relationCount(item.likes) + (wasLiked ? -1 : 1)) }] } : item)); } catch (e) { setError(e?.message || "Could not update like."); } }
   async function comment(post, text) { return addComment(post.id, session.user.id, text); } async function removePost(post) { try { await deletePost(post.id); setPosts((current) => current.filter((item) => item.id !== post.id)); } catch (e) { setError(e?.message || "Could not delete post."); } }
   const openAccount = (account) => { if (!account?.id) return; setViewedProfile({ ...account }); setProfileTab("posts"); setActive("profile"); }; const openOwnProfile = () => { setViewedProfile(null); setProfileTab("posts"); setActive("profile"); }; const openSaved = () => { setViewedProfile(null); setProfileTab("saved"); setActive("profile"); };
-  if (booting) return <div className="boot"><div className="brand-mark">C</div><h1>Convogram</h1><p>Loading your social world…</p></div>;
+  if (window.location.pathname === "/download" || window.location.pathname === "/download/") return <DownloadPage />;\n  if (booting) return <div className="boot"><div className="brand-mark">C</div><h1>Convogram</h1><p>Loading your social world…</p></div>;
   if (!session) return <div className="auth"><div className="auth-card"><div className="brand-row"><div className="brand-mark">C</div><div><b>Convogram</b><span>Everything social, together.</span></div></div><div className="auth-copy"><small>THE SOCIAL SUPERAPP</small><h1>{authMode === "login" ? "Welcome back." : "Create your Convogram."}</h1><p>Post, chat, call, discover Shorts, follow people and build communities from one account.</p></div><form onSubmit={authenticate}>{authMode === "signup" && <><label>Display name<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label><label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} /></label></>}<label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label><label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>{error && <div className="alert error">{error}</div>}{notice && <div className="alert">{notice}</div>}<button className="primary">{authMode === "login" ? "Log in" : "Create account"}</button></form><button className="switch" onClick={() => setAuthMode((m) => m === "login" ? "signup" : "login")}>{authMode === "login" ? "New to Convogram? Create an account" : "Already have an account? Log in"}</button></div></div>;
   return <div className={`app ${active === "messages" && window.__convogramChatOpen ? "chat-mode" : ""}`} style={{ overflowX: "hidden" }}>
     <header className="topbar"><button className="brand-button" onClick={() => setActive("home")}><span className="brand-mark small">C</span><b>Convogram</b></button><div className="top-search" /><div className="top-actions"><button className="top-create" onClick={() => openComposer("post")}><Plus size={20} /><span>Post</span></button><button onClick={() => setActive("search")}><Search size={20} /></button><button onClick={() => setFeatureSuite(true)}><SlidersHorizontal size={20} /></button><button className="notification" onClick={openNotifications}><Bell size={20} />{unread > 0 && <i>{unread > 9 ? "9+" : unread}</i>}</button><button onClick={openOwnProfile}><span className="avatar mini">{avatar(profile)}</span></button></div></header>
