@@ -5,11 +5,11 @@
 [[redirects]]
   from = "/download"
   to = "/download.html"
-  status = 301
+  status = 200
   force = true
 
 [[redirects]]
   from = "/download/"
   to = "/download.html"
-  status = 301
+  status = 200
   force = true
