@@ -56,64 +56,9 @@ async function saveAndroidPushToken(userId, token) {
   if (error) throw error;
 }
 
-async function notifyRecipientsForMessage(message) {
-  if (!message?.id || !message?.conversation_id || !pushUserId || message.sender_id !== pushUserId) return;
-  try {
-    const { data: members, error } = await supabase
-      .from("conversation_members")
-      .select("user_id")
-      .eq("conversation_id", message.conversation_id)
-      .neq("user_id", pushUserId);
-    if (error) throw error;
-    if (!members?.length) return;
-
-    const { data: sender } = await supabase
-      .from("profiles")
-      .select("display_name, username")
-      .eq("id", pushUserId)
-      .maybeSingle();
-    const senderName = sender?.display_name || sender?.username || "Someone";
-    const body = message.message_type === "image" ? "Sent you a photo" : message.message_type === "video" ? "Sent you a video" : message.message_type === "audio" ? "Sent you a voice message" : (message.content || "Sent you a message");
-    const title = `${senderName} on Convogram`;
-
-    await Promise.all((members || []).map(async ({ user_id: toUserId }) => {
-      try {
-        await supabase.functions.invoke("push-android", {
-          body: {
-            toUserId,
-            title,
-            body: body.slice(0, 240),
-            data: {
-              type: "message",
-              messageId: message.id,
-              conversationId: message.conversation_id,
-              senderId: pushUserId,
-            },
-          },
-        });
-      } catch (error) {
-        console.warn("Convogram message push failed", error);
-      }
-    }));
-  } catch (error) {
-    console.warn("Convogram message notification bridge failed", error);
-  }
-}
-
-function installMessagePushBridge(userId) {
-  if (!userId || messagePushChannel) return;
-  messagePushChannel = supabase
-    .channel(`convogram-push-${userId}`)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `sender_id=eq.${userId}` }, ({ new: message }) => {
-      notifyRecipientsForMessage(message);
-    })
-    .subscribe();
-}
-
 async function initializeAndroidPush(userId) {
   if (!userId) return;
   pushUserId = userId;
-  installMessagePushBridge(userId);
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
   try {
     if (!pushListenersInstalled) {
