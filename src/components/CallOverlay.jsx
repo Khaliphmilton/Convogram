@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabase";
 import { registerCallPush } from "../lib/push";
 import "./CallOverlay.css";
 
-const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }];
+const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }, ...(import.meta.env.VITE_TURN_URL && import.meta.env.VITE_TURN_USERNAME && import.meta.env.VITE_TURN_CREDENTIAL ? [{ urls: import.meta.env.VITE_TURN_URL, username: import.meta.env.VITE_TURN_USERNAME, credential: import.meta.env.VITE_TURN_CREDENTIAL }] : [])];
 const ConvogramMediaPermissions = registerPlugin("ConvogramMediaPermissions");
 
 async function ensureNativeMediaPermissions(type) {
