@@ -1,7 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { Capacitor } from "@capacitor/core";
-import { PushNotifications } from "@capacitor/push-notifications";
-import { LocalNotifications } from "@capacitor/local-notifications";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://cckobknolduqnsimwvdu.supabase.co";
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_dnyPhxVf2nVqHE1UOR96Fg_HpqE4M32";
@@ -31,94 +28,13 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   global: { fetch: timedFetch },
 });
 
-let pushListenersInstalled = false;
-let pushUserId = null;
-let pushNotificationId = 10000;
-let messagePushChannel = null;
-
-async function saveAndroidPushToken(userId, token) {
-  if (!userId || !token) return;
-  const { data: existing, error: lookupError } = await supabase
-    .from("notification_devices")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("platform", "android")
-    .eq("endpoint", token)
-    .maybeSingle();
-  if (lookupError) throw lookupError;
-  if (existing?.id) {
-    const { error } = await supabase.from("notification_devices").update({ updated_at: new Date().toISOString() }).eq("id", existing.id);
-    if (error) throw error;
-    return;
-  }
-  await supabase.from("notification_devices").delete().eq("user_id", userId).eq("platform", "android").neq("endpoint", token);
-  const { error } = await supabase.from("notification_devices").insert({ user_id: userId, platform: "android", endpoint: token });
-  if (error) throw error;
-}
-
-async function initializeAndroidPush(userId) {
-  if (!userId) return;
-  pushUserId = userId;
-  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
-  try {
-    if (!pushListenersInstalled) {
-      pushListenersInstalled = true;
-      await PushNotifications.addListener("registration", async ({ value }) => {
-        try { await saveAndroidPushToken(pushUserId, value); }
-        catch (error) { console.warn("Convogram push token save failed", error); }
-      });
-      await PushNotifications.addListener("registrationError", (error) => console.warn("Convogram FCM registration failed", error));
-      await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
-        try {
-          const permission = await LocalNotifications.checkPermissions();
-          if (permission.display !== "granted") return;
-          await LocalNotifications.schedule({ notifications: [{
-            id: pushNotificationId++,
-            title: notification?.title || "Convogram",
-            body: notification?.body || "You have a new notification.",
-            channelId: "convogram_notifications",
-            smallIcon: "ic_stat_convogram",
-            extra: notification?.data || {},
-          }] });
-        } catch (error) { console.warn("Convogram foreground notification failed", error); }
-      });
-      await PushNotifications.addListener("pushNotificationActionPerformed", ({ notification }) => {
-        try { window.dispatchEvent(new CustomEvent("convogram_push_opened", { detail: notification?.data || {} })); } catch (_) {}
-      });
-    }
-
-    let permission = await PushNotifications.checkPermissions();
-    if (permission.receive !== "granted") permission = await PushNotifications.requestPermissions();
-    if (permission.receive !== "granted") return;
-
-    try {
-      await PushNotifications.createChannel({ id: "convogram_notifications", name: "Convogram notifications", description: "Messages, calls and other Convogram alerts", importance: 5, visibility: 1, sound: "default", vibration: true });
-    } catch (_) {}
-
-    try {
-      let localPermission = await LocalNotifications.checkPermissions();
-      if (localPermission.display !== "granted") localPermission = await LocalNotifications.requestPermissions();
-      if (localPermission.display === "granted") await LocalNotifications.createChannel({ id: "convogram_notifications", name: "Convogram notifications", description: "Messages, calls and other Convogram alerts", importance: 5, visibility: 1, sound: "default", vibration: true });
-    } catch (_) {}
-
-    await PushNotifications.register();
-  } catch (error) {
-    console.warn("Convogram Android push setup failed", error);
-  }
-}
-
 if (typeof window !== "undefined" && !window.__convogramPushAuthListener) {
   window.__convogramPushAuthListener = true;
-  supabase.auth.getSession().then(({ data }) => {
-    if (data?.session?.user?.id) initializeAndroidPush(data.session.user.id);
-  }).catch(() => {});
+  const register = id => import("./push-notifications").then(m => m.initializePushNotifications(id)).catch(e => console.warn("Push setup failed", e));
+  supabase.auth.getSession().then(({ data }) => { if (data?.session?.user?.id) register(data.session.user.id); }).catch(console.warn);
   supabase.auth.onAuthStateChange((_event, session) => {
-    pushUserId = session?.user?.id || null;
-    if (messagePushChannel) {
-      supabase.removeChannel(messagePushChannel);
-      messagePushChannel = null;
-    }
-    if (session?.user?.id) initializeAndroidPush(session.user.id);
+    if (session?.user?.id) setTimeout(() => register(session.user.id), 0);
+    else import("./push-notifications").then(m => m.resetPushNotificationUser());
   });
 }
 
