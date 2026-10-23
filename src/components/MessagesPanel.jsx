@@ -97,10 +97,9 @@ async function loadConversationList(userId) {
         _latest_message: latest,
         unread_count: unread,
         _display_name:
-          base.name ||
-          otherProfile?.display_name ||
-          otherProfile?.username ||
-          (base.type === "group" ? "Group conversation" : "Direct conversation"),
+          (base.type === "group"
+            ? base.name || "Group conversation"
+            : otherProfile?.display_name || otherProfile?.username || "Direct conversation"),
       };
     })
     .filter(Boolean)
